@@ -4,15 +4,18 @@ import torch
 
 def testAutoencoder():
     # specify the dimensions
-    dim = [2,128,128,2]
+    encoder_dim = [2]
+    hidden_dim  = 1
+    decoder_Dim = [100,50,2]
 
-    ac  = Autoencoder(dim)
+    ac  = Autoencoder(encoder_dim, hidden_dim, decoder_Dim)
 
     # Randomly generate some data
     randomData = torch.rand(100,2)
     res = ac(randomData)
 
-    assert res.shape[1] == dim[-1]
+    assert res.shape[1] == 2
+
 
 if __name__ == "__main__":
     testAutoencoder()
