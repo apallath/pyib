@@ -1,4 +1,7 @@
 matplotlib
 numpy
+OpenMM
 pytest
+scipy
 torch
+tqdm
