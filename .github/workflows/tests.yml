@@ -23,12 +23,13 @@ jobs:
     - name: Setup conda
       uses: s-weigand/setup-conda@v1
       with:
+          activate-conda: true
           update-conda: true
           python-version: ${{ matrix.python-version }}
           conda-channels: anaconda, conda-forge
     - name: Install OpenMM
       run: |
-        conda install -c omnia openmm
+        conda install -c conda-forge openmm
         python -c "import openmm"
     - name: Install pytest + other dependencies with pip
       run: |
