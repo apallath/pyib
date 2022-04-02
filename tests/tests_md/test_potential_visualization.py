@@ -1,5 +1,8 @@
 """
 Tests for visualization of different potentials.
+
+Note:
+    Tests are self-explanatory and are hence not documented.
 """
 import inspect
 import os
@@ -87,7 +90,6 @@ def test_vis_MullerBrownPotential():
     # 1D projection
     fig, ax, _, _ = vis.plot_projection_x()
     plt.savefig("tmp/MullerBrownPotential_x.png")
-
 
 
 if __name__ == "__main__":

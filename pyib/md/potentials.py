@@ -12,6 +12,7 @@ from openmm import openmm
 #
 # For each new potential you add here, add:
 # - a visualization test in tests/test_md/test_potential_visualization.py
+# - a simulation + visualization test in tests/test_md/test_simulation_potential_visualization.py
 #
 ################################################################################
 
@@ -62,7 +63,7 @@ class Potential2D(openmm.CustomExternalForce):
 
 
 class SlipBondPotential2D(Potential2D):
-    """
+    r"""
     2-basin slip bond potential.
 
     $$U(x, y) = \left( \left(\frac{(y - y\_0)^2}{y\_scale} - y\_shift \right)^2 + \frac{(x - y - xy\_0)^2}{xy\_scale} \right)$$
@@ -90,7 +91,7 @@ class SlipBondPotential2D(Potential2D):
 
 
 class CatchBondPotential2D(Potential2D):
-    """
+    r"""
     3-basin catch bond potential (slip bond potential with an extra harmonic basin).
 
     $$U(x, y) = -\ln \left[ e^{-\left( \left(\frac{(y - y_0)^2}{y_{scale}} - y_{shift} \right)^2 + \frac{(x - y - xy_{shift})^2}{2} \right) }
@@ -125,7 +126,8 @@ class CatchBondPotential2D(Potential2D):
 
     def potential(self, x, y):
         """Computes the catch bond potential at a given point (x, y)."""
-        return -np.log( np.exp( -(((y - self.y_0) ** 2 / self.y_scale - self.y_shift) ** 2 + (x - y - self.xy_0) ** 2 / self.xy_scale) ) + np.exp(-( (x - self.gx_0) ** 2 / self.gx_scale + (y - self.gy_0) ** 2 / self.gy_scale )) )
+        return -np.log(np.exp(-(((y - self.y_0) ** 2 / self.y_scale - self.y_shift) ** 2 + (x - y - self.xy_0) ** 2 / self.xy_scale)) +
+                       np.exp(-((x - self.gx_0) ** 2 / self.gx_scale + (y - self.gy_0) ** 2 / self.gy_scale)))
 
 
 class SzaboBerezhkovskiiPotential(Potential2D):
@@ -137,7 +139,7 @@ class SzaboBerezhkovskiiPotential(Potential2D):
     Omega2 = 1.01 * omega2
     Delta = omega2 * x0 ** 2 / 4.0
 
-    def __init__(self, x0 = 2.2, omega2 = 4.0):
+    def __init__(self, x0=2.2, omega2=4.0):
         # Look up Szabo-Berezhkovskii potential formula for details
         constvals = {"x0": self.x0,
                      "omega2": self.omega2,
@@ -174,7 +176,7 @@ class MullerBrownPotential(Potential2D):
 
     def __init__(self):
         for i in range(4):
-            fmt = dict(a = self.a[i], b = self.b[i], c = self.c[i], A = self.A[i], x_bar = self.x_bar[i], y_bar = self.y_bar[i])
+            fmt = dict(a=self.a[i], b=self.b[i], c=self.c[i], A=self.A[i], x_bar=self.x_bar[i], y_bar=self.y_bar[i])
             if i == 0:
                 self.force = '''{A} * exp({a} * (x - {x_bar})^2 + {b} * (x - {x_bar}) * (y - {y_bar}) + {c} * (y - {y_bar})^2)'''.format(**fmt)
             else:
@@ -183,9 +185,9 @@ class MullerBrownPotential(Potential2D):
         super().__init__()
 
     def potential(self, x, y):
-        """Compute the potential at a given point (x, y)."""
+        """Compute the Muller-Brown potential at a given point (x, y)."""
         value = 0
         for i in range(4):
-            value += self.A[i] * np.exp(self.a[i] * (x - self.x_bar[i])**2 + \
-                self.b[i] * (x - self.x_bar[i]) * (y - self.y_bar[i]) + self.c[i] * (y - self.y_bar[i])**2)
+            value += self.A[i] * np.exp(self.a[i] * (x - self.x_bar[i])**2 +
+                                        self.b[i] * (x - self.x_bar[i]) * (y - self.y_bar[i]) + self.c[i] * (y - self.y_bar[i])**2)
         return value

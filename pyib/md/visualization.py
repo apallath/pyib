@@ -21,21 +21,24 @@ class VisualizePotential2D:
     of a particle on a 2D potential surface.
 
     Args:
-        potential2D:
-        temp:
-        xrange:
-        yrange:
-        contourvals:
-        mesh:
-        cmap:
+        potential2D (pyib.md.potentials.Potential2D): 2D potential energy surface.
+        temp (float): Temperature (required, as free energies are plotted in kT).
+        xrange (tuple of length 2): Range of x-values to plot.
+        yrange (tuple of length 2): Range of y-values to plot.
+        contourvals (int or array-like): Determines the number and positions of the contour lines / regions. Refer to the `matplotlib documentation`_ for details.
+        clip (float): Value of free energy (in kT) to clip contour plot at.
+        mesh: Number of mesh points in each dimension for contour plot.
+        cmap: Matplotlib colormap.
+
+    .. _matplotlib documentation: https://matplotlib.org/3.5.1/api/_as_gen/matplotlib.pyplot.contour.html
     """
     def __init__(self,
                  potential2D: Potential2D,
                  temp: float,
                  xrange: tuple,
                  yrange: tuple,
-                 contourvals = None,
-                 clip = None,
+                 contourvals=None,
+                 clip=None,
                  mesh: int = 200,
                  cmap: str = 'jet'):
         self.potential2D = potential2D
@@ -103,11 +106,11 @@ class VisualizePotential2D:
         Scatters entire trajectory onto potential energy surface.
 
         Args:
-            traj:
-            outimg:
-            every:
-            s:
-            c:
+            traj (numpy.ndarray): Array of shape (T, 3) containing the (x, y, z) coordinates at each timestep.
+            outimg (str): Filename of the output image.
+            every (int): Interval to plot point at (default = 1).
+            s (int): Size of points (default = 1).
+            c (string): Color of points (default = 'black').
         """
         fig, ax = self.plot_potential()
         ax.scatter(traj[::every, 0], traj[::every, 1], s=s, c=c)
@@ -119,11 +122,11 @@ class VisualizePotential2D:
         Scatters x-projection of entire trajectory onto potential energy surface.
 
         Args:
-            traj:
-            outimg:
-            every:
-            s:
-            c:
+            traj (numpy.ndarray): Array of shape (T, 3) containing the (x, y, z) coordinates at each timestep.
+            outimg (str): Filename of the output image.
+            every (int): Interval to plot point at (default = 1).
+            s (int): Size of points (default = 1).
+            c (str): Color of points (default = 'black').
         """
         fig, ax, x, Fx = self.plot_projection_x()
         for i in tqdm(range(0, traj.shape[0], every)):
@@ -134,18 +137,20 @@ class VisualizePotential2D:
         plt.savefig(outimg)
         plt.close()
 
-    def animate_traj(self, traj, outdir, every=1, s=3, c='black', call_ffmpeg: bool = True):
+    def animate_traj(self, traj, outdir, every=1, s=3, c='black', call_ffmpeg: bool = True,
+                     ffmpeg_rate: int = 25):
         """
         Plots positions at timesteps defined by interval `every` on potential
         energy surface and stitches together plots using ffmpeg to make a movie.
 
         Args:
-            traj (iterable):
-            outdir (str):
-            every (int):
-            s (int):
-            c (str):
-            call_ffmpeg (bool):
+            traj (numpy.ndarray): Array of shape (T, 3) containing the (x, y, z) coordinates at each timestep.
+            outdir (string): Directory `dir` to save frames in. Frames are saved as `dir/traj.00000.png`, `dir/traj.00001.png`, ...
+            every (int): Interval to plot point at (default = 1).
+            s (int): Size of points (default = 1).
+            c (str): Color of points (default = 'black').
+            call_ffmpeg (bool): If true, ffmpeg is called to stitch together frames into a movie. ffmpeg must be installed.
+            ffmpeg_rate (int): Frame rate (frames/second) of output movie.
         """
         if not os.path.exists(outdir):
             os.makedirs(outdir)
@@ -157,21 +162,23 @@ class VisualizePotential2D:
             plt.close()
 
         if call_ffmpeg:
-            os.system("ffmpeg -r 25 -i {}/traj.%5d.png -vb 20M {}/traj.mp4".format(outdir, outdir))
+            os.system("ffmpeg -y -r {} -i {}/traj.%5d.png -vb 20M {}/traj.mp4".format(ffmpeg_rate, outdir, outdir))
 
     def animate_traj_projection_x(self, traj, outdir, every=1, s=3, c='black',
-                                  call_ffmpeg: bool = True):
+                                  call_ffmpeg: bool = True,
+                                  ffmpeg_rate: int = 25):
         """
         Plots positions at timesteps defined by interval `every` on the x-projection of the
         potential energy surface and stitches together plots using ffmpeg to make a movie.
 
         Args:
-            traj (iterable):
-            outdir (str):
-            every (int):
-            s (int):
-            c (str):
-            call_ffmpeg (bool):
+            traj (numpy.ndarray): Array of shape (T, 3) containing the (x, y, z) coordinates at each timestep.
+            outdir (string): Directory `dir` to save frames in. Frames are saved as `dir/traj.00000.png`, `dir/traj.00001.png`, ...
+            every (int): Interval to plot point at (default = 1).
+            s (int): Size of points (default = 1).
+            c (str): Color of points (default = 'black').
+            call_ffmpeg (bool): If true, ffmpeg is called to stitch together frames into a movie. ffmpeg must be installed.
+            ffmpeg_rate (int): Frame rate (frames/second) of output movie.
         """
         if not os.path.exists(outdir):
             os.makedirs(outdir)
@@ -186,4 +193,4 @@ class VisualizePotential2D:
             plt.close()
 
         if call_ffmpeg:
-            os.system("ffmpeg -r 25 -i {}/traj_x.%5d.png -vb 20M {}/traj_x.mp4".format(outdir, outdir))
+            os.system("ffmpeg -y -r {} -i {}/traj_x.%5d.png -vb 20M {}/traj_x.mp4".format(ffmpeg_rate, outdir, outdir))
