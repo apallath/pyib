@@ -1,7 +1,6 @@
 # pip-installable
 matplotlib
 numpy
-pytest
 scipy
 torch
 tqdm
