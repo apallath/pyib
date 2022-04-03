@@ -1,7 +1,11 @@
+# pip-installable
 matplotlib
 numpy
-OpenMM
-pytest
 scipy
 torch
 tqdm
+
+# conda-installable
+# You need to install the following dependencies using conda
+# - OpenMM
+#     conda install -c conda-forge openmm
