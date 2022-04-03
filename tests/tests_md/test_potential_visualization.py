@@ -35,6 +35,25 @@ def test_vis_SlipBondPotential2D():
     plt.savefig("tmp/SlipBondPotential2D_x.png")
 
 
+def test_vis_SlipBondPotential2D_force_x():
+    pot = SlipBondPotential2D(force_x=1)
+    temp = 300
+    vis = VisualizePotential2D(pot, temp=temp,
+                               xrange=[-12, 15], yrange=[-6, 8],
+                               contourvals=10, clip=15)
+
+    if not os.path.exists("./tmp/"):
+        os.makedirs("./tmp/")
+
+    # 2D surface
+    fig, ax = vis.plot_potential()
+    plt.savefig("tmp/SlipBondPotential2D_force_x.png")
+
+    # 1D projection
+    fig, ax, _, _ = vis.plot_projection_x()
+    plt.savefig("tmp/SlipBondPotential2D_x_force_x.png")
+
+
 def test_vis_CatchBondPotential():
     pot = CatchBondPotential2D()
     temp = 300

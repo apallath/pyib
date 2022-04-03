@@ -68,26 +68,30 @@ class SlipBondPotential2D(Potential2D):
 
     $$U(x, y) = \left( \left(\frac{(y - y\_0)^2}{y\_scale} - y\_shift \right)^2 + \frac{(x - y - xy\_0)^2}{xy\_scale} \right)$$
     """
-    def __init__(self, y_0=1, y_scale=5, y_shift=4, xy_0=0, xy_scale=2):
+    def __init__(self, force_x=0, force_y=0, y_0=1, y_scale=5, y_shift=4, xy_0=0, xy_scale=2):
+        self.force_x = force_x
+        self.force_y = force_y
         self.y_0 = y_0
         self.y_scale = y_scale
         self.y_shift = y_shift
         self.xy_0 = xy_0
         self.xy_scale = xy_scale
 
-        constvals = {"y_0": self.y_0,
+        constvals = {"force_x": self.force_x,
+                     "force_y": self.force_y,
+                     "y_0": self.y_0,
                      "y_scale": self.y_scale,
                      "y_shift": self.y_shift,
                      "xy_0": self.xy_0,
                      "xy_scale": self.xy_scale}
 
-        self.force = '''((y - {y_0})^2 / {y_scale} - {y_shift})^2 + (x - y - {xy_0})^2 / {xy_scale}'''.format(**constvals)
+        self.force = '''((y - {y_0})^2 / {y_scale} - {y_shift})^2 + (x - y - {xy_0})^2 / {xy_scale} - {force_x} * x - {force_y} * y'''.format(**constvals)
 
         super().__init__()
 
     def potential(self, x, y):
         """Computes the slip bond potential at a given point (x, y)."""
-        return ((y - self.y_0) ** 2 / self.y_scale - self.y_shift) ** 2 + (x - y - self.xy_0) ** 2 / self.xy_scale
+        return ((y - self.y_0) ** 2 / self.y_scale - self.y_shift) ** 2 + (x - y - self.xy_0) ** 2 / self.xy_scale - self.force_x * x - self.force_y * y
 
 
 class CatchBondPotential2D(Potential2D):
