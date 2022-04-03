@@ -10,7 +10,6 @@ import re
 import sys
 
 import matplotlib.pyplot as plt
-import numpy as np
 
 from pyib.md.potentials import SlipBondPotential2D, CatchBondPotential2D, SzaboBerezhkovskiiPotential as SBPotential, MullerBrownPotential
 from pyib.md.visualization import VisualizePotential2D
@@ -71,6 +70,25 @@ def test_vis_CatchBondPotential():
     # 1D projection
     fig, ax, _, _ = vis.plot_projection_x()
     plt.savefig("tmp/CatchBondPotential2D_x.png")
+
+
+def test_vis_CatchBondPotential_force_x():
+    pot = CatchBondPotential2D(force_x=1)
+    temp = 300
+    vis = VisualizePotential2D(pot, temp=temp,
+                               xrange=[-12, 15], yrange=[-6, 8],
+                               contourvals=10, clip=15)
+
+    if not os.path.exists("./tmp/"):
+        os.makedirs("./tmp/")
+
+    # 2D surface
+    fig, ax = vis.plot_potential()
+    plt.savefig("tmp/CatchBondPotential2D_force_x.png")
+
+    # 1D projection
+    fig, ax, _, _ = vis.plot_projection_x()
+    plt.savefig("tmp/CatchBondPotential2D_x_force_x.png")
 
 
 def test_vis_SBPotential():

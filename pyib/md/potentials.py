@@ -101,7 +101,9 @@ class CatchBondPotential2D(Potential2D):
     $$U(x, y) = -\ln \left[ e^{-\left( \left(\frac{(y - y_0)^2}{y_{scale}} - y_{shift} \right)^2 + \frac{(x - y - xy_{shift})^2}{2} \right) }
     + e^-{(x - gx_0)^2 / gx_scale + (y - gy_0)^2 / gy_scale} \right]$$
     """
-    def __init__(self, y_0=1, y_scale=5, y_shift=4, xy_0=0, xy_scale=2, gx_0=2, gx_scale=0.5, gy_0=-2.5, gy_scale=0.25):
+    def __init__(self, force_x=0, force_y=0, y_0=1, y_scale=5, y_shift=4, xy_0=0, xy_scale=2, gx_0=2, gx_scale=0.5, gy_0=-2.5, gy_scale=0.25):
+        self.force_x = force_x
+        self.force_y = force_y
         self.y_0 = y_0
         self.y_scale = y_scale
         self.y_shift = y_shift
@@ -114,7 +116,9 @@ class CatchBondPotential2D(Potential2D):
         self.gy_0 = gy_0
         self.gy_scale = gy_scale
 
-        constvals = {"y_0": self.y_0,
+        constvals = {"force_x": self.force_x,
+                     "force_y": self.force_y,
+                     "y_0": self.y_0,
                      "y_scale": self.y_scale,
                      "y_shift": self.y_shift,
                      "xy_0": self.xy_0,
@@ -124,14 +128,14 @@ class CatchBondPotential2D(Potential2D):
                      "gy_0": self.gy_0,
                      "gy_scale": self.gy_scale}
 
-        self.force = '''-log(exp(-(((y - {y_0})^2 / {y_scale} - {y_shift})^2 + (x - y - {xy_0})^2 / {xy_scale}) ) + exp(-( (x - {gx_0})^2 / {gx_scale} + (y - {gy_0})^2 / {gy_scale} )) )'''.format(**constvals)
+        self.force = '''-log(exp(-(((y - {y_0})^2 / {y_scale} - {y_shift})^2 + (x - y - {xy_0})^2 / {xy_scale}) ) + exp(-( (x - {gx_0})^2 / {gx_scale} + (y - {gy_0})^2 / {gy_scale} )) ) - {force_x} * x - {force_y} * y'''.format(**constvals)
 
         super().__init__()
 
     def potential(self, x, y):
         """Computes the catch bond potential at a given point (x, y)."""
         return -np.log(np.exp(-(((y - self.y_0) ** 2 / self.y_scale - self.y_shift) ** 2 + (x - y - self.xy_0) ** 2 / self.xy_scale)) +
-                       np.exp(-((x - self.gx_0) ** 2 / self.gx_scale + (y - self.gy_0) ** 2 / self.gy_scale)))
+                       np.exp(-((x - self.gx_0) ** 2 / self.gx_scale + (y - self.gy_0) ** 2 / self.gy_scale))) - self.force_x * x - self.force_y * y 
 
 
 class SzaboBerezhkovskiiPotential(Potential2D):
