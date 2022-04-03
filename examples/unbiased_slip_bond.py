@@ -16,7 +16,7 @@ for force in [0, 0.5, 1, 1.5, 2, 2.5, 3]:
         # Which run?
         print("Force = {}, iter = {}".format(force, run))
         print("----")
-        
+
         # Initialize potential
         pot = SlipBondPotential2D(force_x=force)
 

@@ -11,7 +11,7 @@ from pyib.md.visualization import VisualizePotential2D
 temp = 300
 init_coord = np.array([[-5, -4, 0]])
 
-for force in [0, 0.5, 1, 1.5, 2, 2.5, 3]:
+for force in [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5]:
     for run in range(3):
         # Which run?
         print("Force = {}, iter = {}".format(force, run))
