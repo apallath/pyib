@@ -8,4 +8,4 @@ tqdm
 # conda-installable
 # You need to install the following dependencies using conda
 # - OpenMM
-#     conda install -c omnia openmm
+#     conda install -c conda-forge openmm
