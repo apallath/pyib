@@ -122,13 +122,11 @@ class SingleParticleSimulation:
 
         # Finalize
         self._dump_state(chkfile, i)
-        self._write_trajectory(trajfile, i)
-        self._write_energies(energyfile, i)
 
     def _dump_state(self, ofilename, i):
         t = i * self.timestep / unit.picosecond
         print("Checkpoint at {:10.7f} ps".format(t))
-        
+
         state = self.context.getState(getPositions=True, getVelocities=True)
 
         with open(ofilename, "wb") as fh:
