@@ -255,7 +255,7 @@ class VAE(nn.Module):
         w = self.__weight_layer(self.__weights_input)
 
         # Shape (N, 1)
-        log_p  = torch.log(torch.sum(torch.exp(log_p) @ w + 1e-10, dim=1, keepdim=True))
+        log_p  = torch.log(torch.exp(log_p) @ w + 1e-10)
 
         return log_p
     
