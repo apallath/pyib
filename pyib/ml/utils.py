@@ -46,3 +46,8 @@ def prep_data_PIB(file:str, dt:int):
     assert len(X) == len(y) , "The length of X and y do not agree, something is wrong with the code."
 
     return X, y
+
+def torch_log_sum_exp(X, dim=None):
+    """
+    logsumexp implemented in torch
+    """
