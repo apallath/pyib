@@ -1,4 +1,3 @@
-from syslog import LOG_PERROR
 import numpy as np
 import torch.nn as nn
 import torch
@@ -96,7 +95,6 @@ class Autoencoder(nn.Module):
             encoded = self.encoder(X)
 
             return encoded
-<<<<<<< HEAD
         
 
 class VAE(nn.Module):
@@ -105,18 +103,12 @@ class VAE(nn.Module):
     """
     def __init__(self, Encoderdimensions:list, hidden_dim:int, Decoderdimensions:list, RepresentativeD:int,\
          activation=nn.ReLU(), prior='VampPrior'):
-=======
-
-class VAE(nn.Module):
-    def __init__(self, Encoderdimensions:list, hidden_dim:int, Decoderdimensions:list, device="cpu"):
->>>>>>> 3cf93a566e80160b1c1d84b5d8bd1feb0b31ccea
         super().__init__()
         self.Encoderdimensions = Encoderdimensions
         self.Decoderdimensions = Decoderdimensions
         self.hidden_dim        = hidden_dim
         self.Nencoder          = len(self.Encoderdimensions)
         self.Ndecoder          = len(self.Decoderdimensions)
-<<<<<<< HEAD
         self.activation        = activation
 
         # Name of the prior --> either "VampPrior" or "Normal"
@@ -130,28 +122,19 @@ class VAE(nn.Module):
 
         # The last element of the decoder dimension is the output dimension
         self.output_dim        = self.Decoderdimensions[-1]
-=======
-        self.device            = device
->>>>>>> 3cf93a566e80160b1c1d84b5d8bd1feb0b31ccea
 
         assert self.Nencoder >=1  , "Number of layers must be larger or equal to 1 as it consist of (intput_dim, dim1,..)"
         assert self.Ndecoder >=1  , "Number of layers must be larger or equal to 1 as it consist of (dim1, dim2, ... ouput_dim"
 
-<<<<<<< HEAD
         # Initialize encoder and decoder 
         self.encoderMean, self.encoderLogVar = self._encoder_init()
         self.decoder = self._decoder_init()
         self._representativeInputs_init()
-=======
-        self.encoder, self.meanLayer, self.logvarLayer = self._encoder_init()
-        self.decoder = self._decoder_init()
->>>>>>> 3cf93a566e80160b1c1d84b5d8bd1feb0b31ccea
 
     def _encoder_init(self):
         """
         Initialization of the encoder 
         """
-<<<<<<< HEAD
         Meanlayers = []
         logVarlayers = []
         for i in range(self.Nencoder-1):
@@ -164,19 +147,6 @@ class VAE(nn.Module):
         logVarlayers = nn.Sequential(*logVarlayers)
         
         return Meanlayers, logVarlayers
-=======
-        layers = []
-        MeanLayer   = []
-        logVarLayer = []
-        for i in range(self.Nencoder-1):
-            layers.append(nn.Linear(self.Encoderdimensions[i], self.Encoderdimensions[i+1]))
-            layers.append(nn.ReLU())
-        
-        MeanLayer.append(self.Encoderdimensions[-1], self.hidden_dim)
-        logVarLayer.append(self.Encoderdimensions[-1], self.hidden_dim)
-
-        return nn.Sequential(*layers), MeanLayer, logVarLayer
->>>>>>> 3cf93a566e80160b1c1d84b5d8bd1feb0b31ccea
 
     def _decoder_init(self):
         """
@@ -188,7 +158,6 @@ class VAE(nn.Module):
 
         layers = []
         for i in range(N-2):
-<<<<<<< HEAD
             layers.append(NonLinear(tempDim[i], tempDim[i+1], bias=True, activation=self.activation))
         layers.append(NonLinear(tempDim[-2], tempDim[-1], bias=True, activation=None))
         
@@ -302,24 +271,3 @@ class VAE(nn.Module):
             index  = torch.argmax(decoder_output, dim=1).flatten()
         
         return index
-=======
-            layers.append(nn.Linear(tempDim[i], tempDim[i+1]))
-            layers.append(nn.ReLU())
-
-        layers.append(nn.Linear(tempDim[-2], tempDim[-1]))
-        
-        return nn.Sequential(*layers)
-    
-    def forward(self, X):
-        encoded = self.encoder(X)
-
-        # mu and logvar should both be of shape (N,hidden_dim)
-        mu      = self.meanLayer(encoded)
-        logvar  = self.logvarLayer(encoded)
-
-        z       = torch.exp(0.5 * logvar) * torch.rand_like(mu) + mu
-
-        output  = self.decoder(z)
-
-        return output
->>>>>>> 3cf93a566e80160b1c1d84b5d8bd1feb0b31ccea
