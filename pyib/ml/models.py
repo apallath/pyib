@@ -1,16 +1,22 @@
-from random import lognormvariate
 import numpy as np
 import torch.nn as nn
 import torch
 
 from .layers import NonLinear
-from .distributions import log_Normal_diag
+from .Distributions import log_Normal_diag
 
 class Autoencoder(nn.Module):
     """
-    Encoderdimensions(list) : Encoder dimensions inputted as (Input_d, dim1, dim2 ,....)
-    hidden_dim(int)         : The dimension of the RC 
-    Decoderdimensions(list) : Decoder dimensions inputted as (dim1, dim2, .., Output_d)
+    Args:
+        Encoderdimensions(list) : Encoder dimensions inputted as (Input_d, dim1, dim2 ,....)
+        hidden_dim(int)         : The dimension of the RC 
+        Decoderdimensions(list) : Decoder dimensions inputted as (dim1, dim2, .., Output_d)
+
+
+    Attributes:
+        Encoderdimensions(list) : Encoder dimensions inputted as (Input_d, dim1, dim2 ,....)
+        hidden_dim(int)         : The dimension of the RC 
+        Decoderdimensions(list) : Decoder dimensions inputted as (dim1, dim2, .., Output_d)
     """
     def __init__(self, Encoderdimensions:list, hidden_dim:int, Decoderdimensions:list, activation=nn.ReLU()):
         super().__init__()
@@ -29,6 +35,9 @@ class Autoencoder(nn.Module):
     def _encoder_init(self):
         """
         Initialization of the encoder 
+
+        Returns:
+            layers(torch.nn.Sequential)   : Sequential model for the encoder  
         """
         layers = []
         for i in range(self.Nencoder-1):
@@ -54,12 +63,10 @@ class Autoencoder(nn.Module):
 
     def forward(self, X):
         """
-        Input:
-        -----
+        Args:
             X(torch.tensor)     : A (N,d) array that contains the d-dimensional input data 
         
-        Output:
-        -------
+        Returns:
             y(torch.tensor)     : A (N,d) array that contains the d-dimensional output data 
         """
         encoded = self.encoder(X)
@@ -71,12 +78,10 @@ class Autoencoder(nn.Module):
         """
         Evaluate returns the decoded output
 
-        Input:
-        ------
+        Args:
             X(torch.tensor)     : A(N,d) array that contains the d-dimensional input data
 
-        Output:
-        -------
+        Returns:
             decoded(torch.tensor): A (N,d) array that contains the d-dimensional output data 
         """
         with torch.no_grad():
@@ -154,7 +159,7 @@ class VAE(nn.Module):
         layers = []
         for i in range(N-2):
             layers.append(NonLinear(tempDim[i], tempDim[i+1], bias=True, activation=self.activation))
-        layers.append(NonLinear(tempDim[-2], tempDim[-1], bias=True, activation=nn.Softmax(dim=-1)))
+        layers.append(NonLinear(tempDim[-2], tempDim[-1], bias=True, activation=None))
         
         return nn.Sequential(*layers)
     
@@ -166,7 +171,7 @@ class VAE(nn.Module):
         self.__pseudo_input  = torch.eye((self._representativeD), requires_grad=False)
 
         # Softmax is used here to make sure that \sum_{i} w_{i} = 1
-        self.__weight_layer  = nn.Sequential(nn.Linear(self._representativeD, 1, bias=False), nn.Softmax(dim=-1))
+        self.__weight_layer  = nn.Sequential(nn.Linear(self._representativeD, 1, bias=False), nn.Softmax(dim=0))
         self.__pseudo_input_layer = NonLinear(self._representativeD, self.input_dim, bias=False,\
              activation=nn.Hardtanh(min_val=0.0, max_val=1.0))
     
@@ -177,7 +182,7 @@ class VAE(nn.Module):
         """
         # Var^{1/2}
         std = torch.exp(0.5 * logvar)
-        eps = torch.rand_like(mean)
+        eps = torch.rand_like(std)
 
         return mean + std * eps, eps
     
@@ -199,19 +204,41 @@ class VAE(nn.Module):
 
         return decoder_output, mean, logvar, z_sample
     
-    def log_pz(self,z):
+    def evaluate(self, X):
+        """
+        """
+        with torch.no_grad():
+            decoder_output, mean, logVar, _ = self.forward(X)
+
+            index = torch.argmax(decoder_output, axis=1, keepdim=True)
+
+        return index, mean, logVar
+    
+    def log_pz(self,z, mean, logvar):
+        """
+        Function that calculates the log of the encoder output p(z|X) ~ N(mu(X), std(X))
+        where mu(X) and std(X) are the encoder NN
+        """
+        # input z (N, hidden_dim)
+        # output log_p (N,1)
+        log_p = log_Normal_diag(z,mean, logvar)
+
+        return log_p
+
+    def log_rz(self,z):
         """
         Function that calculates the log of the prior distribution from VampPrior
 
         Args:
             z (torch.tensor)    : Tensor passed in with shape (N, hidden_dim)
         """
-        # X should be of shape (Reprensetative_D, input_dim)
-        X = self.__pseudo_input_layer(self.__pseudo_input)
+        # U should be of shape (Reprensetative_D, input_dim)
+        # U notation follows the paper 
+        U = self.__pseudo_input_layer(self.__pseudo_input)
 
         # shape (Representative_D, hidden_dim)
-        representative_Z_mean = self.encoderMean(X)
-        representative_Z_logvar = self.encoderLogVar(X)
+        representative_Z_mean = self.encoderMean(U)
+        representative_Z_logvar = self.encoderLogVar(U)
 
         # Shape (1, Representative_D, hidden_dim)
         representative_Z_mean = representative_Z_mean.unsqueeze(0)
@@ -221,6 +248,26 @@ class VAE(nn.Module):
         z_expand = z.unsqueeze(1)
 
         # Find the log likelihood --> (N, Representative_D)
-        log_p  = log_Normal_diag(z_expand, representative_Z_logvar, representative_Z_mean, dim=2)
+        log_p  = log_Normal_diag(z_expand, representative_Z_mean, representative_Z_logvar, dim=2)
+
+        # Obtain the weights w --> which we will then dot with log_p
+        # shape (Representative_D, 1)
+        w = self.__weight_layer(self.__weights_input)
+
+        # Shape (N, 1)
+        log_p  = torch.log(torch.sum(torch.exp(log_p) @ w + 1e-10, dim=1, keepdim=True))
 
         return log_p
+    
+    def update_Labels(self, X):
+        """
+        Update the labels for the following X
+        """
+        with torch.no_grad():
+            # shape (N, d2)
+            decoder_output, _, _, _ = self.forward(X)
+
+            # argmax 
+            index  = torch.argmax(decoder_output, dim=1).flatten()
+        
+        return index
