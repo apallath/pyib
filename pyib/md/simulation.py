@@ -23,6 +23,7 @@ class SingleParticleSimulation:
         init_state (openmm.State): Initial state for re-runs (default = None).
         init_coord (np.ndarray): Initial coordinates of the particle on the surface (default = [[0, 0, 0]]).
         gpu (bool): If True, uses GPU for simulation (default = False).
+        cpu_threads (int): If gpu is False, number of CPU threads to use for simulation. If None, the max cpu count is used. (default = None).
         seed (int): Seed for reproducibility (default = None).
         traj_in_mem (bool): If True, stores trajectory in memory. The trajectory can be accessed by the object's `traj` attribute (default=False).
 
@@ -44,7 +45,8 @@ class SingleParticleSimulation:
                  init_state: openmm.State = None,
                  init_coord: np.ndarray = np.array([0, 0, 0]).reshape((1, 3)),
                  gpu: bool = False,
-                 seed=None,
+                 cpu_threads: int = None,
+                 seed: int = None,
                  traj_in_mem: bool = False):
         # Properties
         self.mass = mass * unit.dalton  # mass of particles
@@ -76,9 +78,10 @@ class SingleParticleSimulation:
             print("Running simulation on GPU.")
         else:
             platform = openmm.Platform.getPlatformByName('CPU')
-            num_threads = str(multiprocessing.cpu_count())
-            properties = {'Threads': num_threads}
-            print("Running simulation on {} CPU threads.".format(num_threads))
+            if cpu_threads is None:
+                cpu_threads = multiprocessing.cpu_count()
+            properties = {'Threads': str(cpu_threads)}
+            print("Running simulation on {} CPU threads.".format(cpu_threads))
 
         self.context = openmm.Context(self.system, self.integrator, platform, properties)
 

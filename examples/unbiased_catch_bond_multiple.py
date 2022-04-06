@@ -23,7 +23,8 @@ for force in [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5]:
         # Initialize simulation
         sim = SingleParticleSimulation(pot,
                                        init_coord=init_coord,
-                                       traj_in_mem=True)
+                                       traj_in_mem=True,
+                                       cpu_threads=1)
 
         if not os.path.exists("./tmp/catch_bond_f{}/{}/".format(force, run)):
             os.makedirs("./tmp/catch_bond_f{}/{}/".format(force, run))
@@ -51,7 +52,7 @@ for force in [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5]:
             energyfile="./tmp/catch_bond_f{}/{}/energies.dat".format(force, run))
 
         # Trajectories
-        vis.scatter_traj(sim.traj, "./tmp/catch_bond_f{}/{}/traj.png".format(force, run))
-        vis.scatter_traj_projection_x(sim.traj, "./tmp/catch_bond_f{}/{}/traj_x.png".format(force, run))
+        vis.scatter_traj(sim.traj, "./tmp/catch_bond_f{}/{}/traj.png".format(force, run), every=50)
+        vis.scatter_traj_projection_x(sim.traj, "./tmp/catch_bond_f{}/{}/traj_x.png".format(force, run), every=50)
         vis.animate_traj(sim.traj, "./tmp/catch_bond_f{}/{}/traj_movie".format(force, run), every=50)
         vis.animate_traj_projection_x(sim.traj, "./tmp/catch_bond_f{}/{}/traj_movie".format(force, run), every=50)
