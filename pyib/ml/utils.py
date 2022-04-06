@@ -40,8 +40,8 @@ def prep_data_PIB(file:str, dt:int):
 
     # Parsed data will be [time, x1, x2, x3, ... , ]
     # We will make an X that has [[x1(t),x2(t),x3(t), ..],...] and y that has [[x1(t+dt), x2(t+dt), x3(t+dt), ...],...]
-    X = parsedData[:,:-dt]
-    y = parsedData[:,dt:]
+    X = torch.tensor(parsedData[:,:-dt].astype(np.float32))
+    y = torch.tensor(parsedData[:,dt:].astype(np.float32))
 
     assert len(X) == len(y) , "The length of X and y do not agree, something is wrong with the code."
 
