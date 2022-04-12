@@ -316,6 +316,7 @@ class VAE(nn.Module):
             one_hot = nn.functional.one_hot(labels,num_classes=self.output_dim)
 
             # sum along dimension 0 to obtain how many data points are in each of the metastable state
+            #  [ [ 1 0 0 ] , [ 0 1 0 ] ... ]
             state_population = one_hot.sum(axis=0)
 
             # set the new representative inputs
