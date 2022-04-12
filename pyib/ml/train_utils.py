@@ -92,6 +92,8 @@ def SPIB_train(VAE_model:VAE, filename:str, labels_func:callable, dt:int, lr=1e-
     TrainY = TrainY.to(device)
     testX  = testX.to(device)
     testY  = testY.to(device)
+
+    TrainX = (TrainX - TrainX.mean(axis=0))/TrainX.std(axis=0)
     VAE_model.to(device)
 
     # Define dataset, trainloader and testloader
@@ -117,6 +119,7 @@ def SPIB_train(VAE_model:VAE, filename:str, labels_func:callable, dt:int, lr=1e-
             # Calculate the log_r
             log_r   = VAE_model.log_rz(sampled_z)
             log_p   = VAE_model.log_pz(sampled_z, mean, logvar)
+
             KLLoss = - beta * torch.mean(log_p - log_r, dim=0)
 
             # Accumulate the total loss 
@@ -138,17 +141,29 @@ def SPIB_train(VAE_model:VAE, filename:str, labels_func:callable, dt:int, lr=1e-
         avg_epoch_loss /= len(TrainLoader)
 
         if print_every!=-1 and (i+1) % print_every == 0:
+            _, state_population = VAE_model.get_Labels(TrainX)
             print("At Epoch {}".format(i+1))
             print("Average epoch Loss = {:.5f}".format(avg_epoch_loss))
             print("Average KL loss = {:.5f}".format(avg_KL_loss))
             print("Average CE loss = {:.5f}".format(avg_CE_loss))
+            print("State population = ", state_population)
 
         # Update labels and trainloader
         if update_labels and (i+1) % update_labels_freq ==0 :
-            print("Updating DataLoader at epoch {}".format(i+1))
-            trainY = VAE_model.update_Labels(TrainX)
+            # updates the labels
+            trainY, state_population = VAE_model.get_Labels(TrainX)
+
+            # Update the representative inputs
+            VAE_model.update_representative_inputs(TrainX)
+
             Dataset = Loader(TrainX, trainY)
             TrainLoader = DataLoader(Dataset, batch_size=batch_size, shuffle=True)
+
+            # reset the optimizer
+            optimizer = optim.Adam(VAE_model.parameters(), lr=lr)
+
+            print("Updating labels at epoch {}".format(i+1))
+            print("State population = ", state_population)
 
 def PIB_train(Autoencoder_model, file_name:str, lr=1e-3):
     """
