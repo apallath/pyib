@@ -1,6 +1,7 @@
 import numpy as np
 import torch.nn as nn
 import torch
+import logging
 
 from .layers import NonLinear
 from .Distributions import log_Normal_diag
@@ -102,7 +103,7 @@ class VAE(nn.Module):
     Encoderdimensions(list)     : The encoder dimension passed in as a list e.g [2,3]
     """
     def __init__(self, Encoderdimensions:list, hidden_dim:int, Decoderdimensions:list, 
-         activation=nn.ReLU(), prior='VampPrior', device="cpu"):
+         activation=nn.ReLU(), prior='VampPrior', device="cpu", representative_dim=None, restrictLogVar=True):
         super().__init__()
         self.Encoderdimensions = Encoderdimensions
         self.Decoderdimensions = Decoderdimensions
@@ -121,7 +122,13 @@ class VAE(nn.Module):
         self.output_dim        = self.Decoderdimensions[-1]
 
         # set the representative dimension, initially set to output_dim
-        self.representative_dim = self.output_dim
+        if representative_dim is None:
+            self.representative_dim = self.output_dim
+        else:
+            self.representative_dim = representative_dim
+
+        # whether or not we are restricting logVar to within range [-10,0] --> could add option to change this too
+        self.restrictLogVar = restrictLogVar
 
         # device name 
         self.device = device
@@ -146,8 +153,12 @@ class VAE(nn.Module):
             encoder.append(NonLinear(self.Encoderdimensions[i], self.Encoderdimensions[i+1], bias=True, activation=self.activation))
 
         Meanlayers = NonLinear(self.Encoderdimensions[-1], self.hidden_dim, bias=True, activation=None)
-        logVarlayers = nn.Sequential(NonLinear(self.Encoderdimensions[-1], self.hidden_dim, bias=True, activation=None), \
-            nn.Sigmoid())
+
+        if self.restrictLogVar:
+            logVarlayers = nn.Sequential(NonLinear(self.Encoderdimensions[-1], self.hidden_dim, bias=True, activation=None), \
+                nn.Sigmoid())
+        else:
+            logVarlayers = NonLinear(self.Encoderdimensions[-1], self.hidden_dim, bias=True, activation=None)
         
         return nn.Sequential(*encoder), Meanlayers, logVarlayers
 
@@ -175,11 +186,11 @@ class VAE(nn.Module):
         # This is of shape (output_dim, output_dim)
         # By passing through a network of (output_dim, 1) --> (output_dim, 1) 
         # These corresponds to uk, where k = i, ..., output_dim
-        self.__weights_input = torch.eye(self.output_dim, m=self.output_dim, requires_grad=False, device=self.device)
+        self.__weights_input = torch.eye(self.representative_dim, m=self.representative_dim, requires_grad=False, device=self.device)
 
         # This is of shape (output_dim, input_dim), which then by passing into encoder NN will give 
         # (output_dim, z_dim) --> p(z|uk) where k = i, .., output_dim
-        self.__pseudo_input  = torch.eye(self.output_dim, m=self.input_dim, requires_grad=False, device=self.device)
+        self.__pseudo_input  = torch.eye(self.representative_dim, m=self.input_dim, requires_grad=False, device=self.device)
 
         # Softmax is used here to make sure that \sum_{i} w_{i} = 1
         self.__weight_layer  = nn.Sequential(nn.Linear(self.output_dim, 1, bias=False), nn.Softmax(dim=0))
@@ -195,6 +206,24 @@ class VAE(nn.Module):
 
         return mean + std * eps, eps
     
+    def _encode(self, X):
+        """
+        Function for encoder
+
+        Return:
+            mean(torch.tensor)
+            logVar(torch.tensor)
+        """
+        X = self.encoder(X)
+
+        mean = self.encoderMean(X)
+        if self.restrictLogVar:
+            logvar = -10*self.encoderLogVar(X)
+        else:
+            logvar = self.encoderLogVar(X)
+        
+        return mean, logvar
+    
     def forward(self,X):
         """
         Args:
@@ -206,22 +235,33 @@ class VAE(nn.Module):
             logvar              : The logvar output from the encoder
             z_sample            : The randomly sampled Z from N(0,I)
         """
-        X = self.encoder(X)
+        mean, logvar = self._encode(X)
 
-        mean = self.encoderMean(X)
-        logvar = -10 * self.encoderLogVar(X)
         decoder_input, z_sample = self.reparametrize(mean, logvar)
         decoder_output = self.decoder(decoder_input)
 
         return decoder_output, mean, logvar, z_sample
     
-    def evaluate(self, X):
+    def evaluate(self, X, to_numpy=True):
         """
+        Function that evaluates the output for any data point
+
+        Args:
+            X(torch.tensor) : Input data with shape (N,input_dim)
         """
+        assert len(X.shape) == 2 , "Input must be 2-dimensional torch.tensor but the user input is dim = {}".format(len(X.shape))
+        assert X.shape[1] == self.input_dim , "Input data must have the same dimension as the required input dimension = {}".format(self.input_dim)
+
         with torch.no_grad():
             decoder_output, mean, logVar, _ = self.forward(X)
 
             index = torch.argmax(decoder_output, axis=1, keepdim=True)
+
+        if to_numpy:
+            index , mean, logVar, decoder_output = index.detach().numpy(), \
+                                                    mean.detach().numpy(), \
+                                                    logVar.detach().numpy(), \
+                                                    decoder_output.detach().numpy()
 
         return index, mean, logVar, decoder_output
     
@@ -229,6 +269,14 @@ class VAE(nn.Module):
         """
         Function that calculates the log of the encoder output p(z|X) ~ N(mu(X), std(X))
         where mu(X) and std(X) are the encoder NN
+
+        Args:
+            z(torch.tensor)     : Sampled z from distribution N(z;mean,var), shape (N,d)
+            mean(torch.tensor)  : Mean is torch tensor of shape (d)
+            logvar(torch.tensor): Log var is torch tensor of shape (d)
+        
+        Return :
+            log_p(z)    : The log likelihood of the data points
         """
         # input z (N, hidden_dim)
         # output log_p (N,1)
@@ -246,11 +294,9 @@ class VAE(nn.Module):
         # uk should be of shape (output_dim, input_dim)
         # where k = i, .., output_dim
         uk = self.__pseudo_input
-        uk = self.encoder(uk)
 
         # shape (Representative_D, hidden_dim)
-        representative_Z_mean = self.encoderMean(uk)
-        representative_Z_logvar = -10 * self.encoderLogVar(uk)
+        representative_Z_mean, representative_Z_logvar = self._encode(uk)
 
         # Shape (1, Representative_D, hidden_dim)
         representative_Z_mean = representative_Z_mean.unsqueeze(0)
@@ -267,9 +313,9 @@ class VAE(nn.Module):
         w = self.__weight_layer(self.__weights_input)
 
         # Shape (N, 1)
-        log_p  = torch.log(torch.exp(log_p) @ w + 1e-10)
+        log_r  = torch.log(torch.exp(log_p) @ w + 1e-10)
 
-        return log_p
+        return log_r
     
     def get_Labels(self, X):
         """
