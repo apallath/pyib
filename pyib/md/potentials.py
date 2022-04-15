@@ -62,6 +62,28 @@ class Potential2D(openmm.CustomExternalForce):
         raise NotImplementedError()
 
 
+class TwoWellPotential2D(Potential2D):
+    r"""
+    2-basin potential with bistability along the x-axis.
+    """
+    def __init__(self):
+        super().__init__()
+
+    def potential(self, x, y):
+        pass
+
+
+class FourWellPotential2D(Potential2D):
+    r"""
+    4-basin potential used in Wang and Tiwary (2021).
+    """
+    def __init__(self):
+        super().__init__()
+
+    def potential(self, x, y):
+        pass
+
+
 class SlipBondPotential2D(Potential2D):
     r"""
     2-basin slip bond potential.
@@ -135,7 +157,7 @@ class CatchBondPotential2D(Potential2D):
     def potential(self, x, y):
         """Computes the catch bond potential at a given point (x, y)."""
         return -np.log(np.exp(-(((y - self.y_0) ** 2 / self.y_scale - self.y_shift) ** 2 + (x - y - self.xy_0) ** 2 / self.xy_scale)) +
-                       np.exp(-((x - self.gx_0) ** 2 / self.gx_scale + (y - self.gy_0) ** 2 / self.gy_scale))) - self.force_x * x - self.force_y * y 
+                       np.exp(-((x - self.gx_0) ** 2 / self.gx_scale + (y - self.gy_0) ** 2 / self.gy_scale))) - self.force_x * x - self.force_y * y
 
 
 class SzaboBerezhkovskiiPotential(Potential2D):

@@ -5,7 +5,7 @@ import numpy as np
 
 from pyib.md.potentials import SlipBondPotential2D
 from pyib.md.simulation import SingleParticleSimulation
-from pyib.md.visualization import VisualizePotential2D
+from pyib.md.visualization import VisualizePotential2D, visualize_free_energy_2D
 from pyib.md.utils import TrajectoryReader
 
 # Constants
@@ -61,3 +61,7 @@ vis.scatter_traj(traj, "./tmp/slip_bond_read_traj/traj.png", every=50)
 vis.scatter_traj_projection_x(traj, "./tmp/slip_bond_read_traj/traj_x.png", every=50)
 vis.animate_traj(traj, "./tmp/slip_bond_read_traj/traj_movie", every=500, ffmpeg_rate=50)
 vis.animate_traj_projection_x(traj, "./tmp/slip_bond_read_traj/traj_movie", every=500, ffmpeg_rate=50)
+
+# Free energies
+fig, ax = visualize_free_energy_2D(traj[:, 0], traj[:, 1], xrange=[-15, 20], yrange=[-8, 10], nbins_x=50, nbins_y=50)
+plt.savefig("./tmp/slip_bond_read_traj/free_energy.png")

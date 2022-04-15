@@ -1,12 +1,13 @@
 """
 Miscellanious utility functions for MD.
 """
+import matplotlib.pyplot as plt
 import numpy as np
-from scipy.special import legendre
 
 ################################################################################
 # Trajectory reader
 ################################################################################
+
 
 class TrajectoryReader:
     """Utility class for reading large trajectories.
@@ -67,41 +68,10 @@ class TrajectoryReader:
 
         return np.array(traj)
 
-################################################################################
-# Legendre polynomial utility functions
-################################################################################
 
-def LegendreFit(x, y, deg=5):
-    """Fit legendre polynomial to x, y.
-
-    Args:
-        x (array-like): x-values
-        y (array-like): y-values
-        deg (int): Degree of legendre polynomial
-
-    Returns:
-        c (array): Legendre coefficients"""
-    c = np.polynomial.legendre.Legendre.fit(x, y, deg=deg).convert().coef
-    return c
-
-
-def getLegendreValues(x, c):
-    r"""
-    Perform legendre polynomial expansion
-        y = \sum_i c_i P_i(x)
-
-    Args:
-        x (array-like): x-values
-        c (array): Legendre coefficients
-
-    Returns:
-        y (float): Legendre polynomial expansion
+def plot_timeseries(t, traj, dpi=150):
     """
-    N = len(c)
-
-    y = np.zeros_like(x)
-    for i in range(N):
-        Pi = legendre(i)
-        y += c[i] * Pi(x)
-
-    return y
+    Plots timeseries data for x, y, and z components of traj.
+    """
+    fig, ax = plt.subplots(4, 1, figsize=(10, 4), dpi=dpi)
+    return fig, ax

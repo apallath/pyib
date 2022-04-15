@@ -1,5 +1,5 @@
 """
-Classes for visualizing trajectory data.
+Classes and functions for visualizing trajectory data.
 """
 import os
 
@@ -50,7 +50,7 @@ class VisualizePotential2D:
         self.mesh = mesh
         self.cmap = cmap
 
-    def plot_potential(self):
+    def plot_potential(self, dpi=150):
         """
         Plots the potential within (xrange[0], xrange[1]) and (yrange[0], yrange[1]).
         """
@@ -65,18 +65,18 @@ class VisualizePotential2D:
         else:
             V = v.reshape(self.mesh, self.mesh) / self.kT
 
-        fig, ax = plt.subplots(dpi=150)
+        fig, ax = plt.subplots(dpi=dpi)
         if self.contourvals is not None:
             cs = ax.contourf(xx, yy, V, self.contourvals, cmap=self.cmap)
         else:
             cs = ax.contourf(xx, yy, V, cmap=self.cmap)
         cbar = fig.colorbar(cs)
-        cbar.set_label(r"Free energy ($k_B T$)")
+        cbar.set_label(r"Potential ($k_B T$)")
         ax.set_xlabel("$x$")
         ax.set_ylabel("$y$")
         return (fig, ax)
 
-    def plot_projection_x(self):
+    def plot_projection_x(self, dpi=150):
         """
         Plots the x-projection of potential within (xrange[0], xrange[1])
         and (yrange[0], yrange[1]).
@@ -94,9 +94,9 @@ class VisualizePotential2D:
         x = np.linspace(self.xrange[0], self.xrange[1], self.mesh)
 
         # Plot
-        fig, ax = plt.subplots(dpi=150)
+        fig, ax = plt.subplots(dpi=dpi)
         ax.plot(x, Fx)
-        ax.set_ylabel(r"Free energy ($k_B T$)")
+        ax.set_ylabel(r"Potential ($k_B T$)")
         ax.set_xlabel("$x$")
         ax.set_ylim([0, None])
         return (fig, ax, x, Fx)
@@ -194,3 +194,41 @@ class VisualizePotential2D:
 
         if call_ffmpeg:
             os.system("ffmpeg -y -r {} -i {}/traj_x.%5d.png -vb 20M {}/traj_x.mp4".format(ffmpeg_rate, outdir, outdir))
+
+
+def visualize_free_energy_2D(xvals, yvals, xrange, yrange, nbins_x=100, nbins_y=100, contourvals=None, clip=None, cmap='jet', dpi=150):
+    """
+    Plots 2D free energy profile from 2D trajectory data.
+
+    Args:
+        xvals (numpy.ndarray): Array of x coordinates of points to bin.
+        yvals (numpy.ndarray): Array of y coordinates of points to bin.
+        xrange (tuple of length 2): Range of x-values to plot.
+        yrange (tuple of length 2): Range of y-values to plot.
+        nbins_x (int): Number of bins along the x-axis (default=100).
+        nbins_y (int): Number of bins along the y-axis (default=100).
+        contourvals (int or array-like): Determines the number and positions of the contour lines / regions. Refer to the `matplotlib documentation`_ for details.
+        clip (float): Value of free energy (in kT) to clip contour plot at.
+        cmap: Matplotlib colormap (default=jet).
+        dpi: Output DPI (default=150).
+
+    .. _matplotlib documentation: https://matplotlib.org/3.5.1/api/_as_gen/matplotlib.pyplot.contour.html
+    """
+    # Compute betaF
+    counts, xbins, ybins, img = plt.hist2d(xvals, yvals, range=[xrange, yrange], bins=[nbins_x, nbins_y])
+    counts[counts == 0] = counts[counts != 0].min()
+    betaF = -np.log(counts)
+    betaF = betaF - np.min(betaF)
+
+    # Plot contour vals
+    fig, ax = plt.subplots(dpi=dpi)
+    if contourvals is not None:
+        cs = ax.contourf(betaF.T, extent=[xrange[0], xrange[1], yrange[0], yrange[1]], levels=contourvals, cmap=cmap)
+    else:
+        cs = ax.contourf(betaF.T, extent=[xrange[0], xrange[1], yrange[0], yrange[1]], cmap=cmap)
+    cbar = fig.colorbar(cs)
+    cbar.set_label(r"Free energy ($k_B T$)")
+    ax.set_xlabel("$x$")
+    ax.set_ylabel("$y$")
+
+    return fig, ax
