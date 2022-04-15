@@ -5,6 +5,7 @@ from ..md.utils import TrajectoryReader
 import torch.nn as nn
 import torch.optim as optim 
 from torch.utils.data import DataLoader
+import numpy as np
 
 class Loader(torch.utils.data.Dataset):
     """
@@ -33,13 +34,19 @@ class Loader(torch.utils.data.Dataset):
         return self.X[index], self.y[index]
 
 
-def SPIB_data_prep(file_name:str, dt:int, label_func:callable, train_percent=0.8,comment_str="#", format="txyz", skip=1):
+def SPIB_data_prep(file_name:str, dt:int, label_file:str, train_percent=0.8,comment_str="#", format="txyz", skip=1):
     """
     Function that prepares the data for SPIB training 
 
     Args:
-        train_percent(float)    : The percent of data used for training 
+        file_name(str)  : The file name of the trajectory file
+        dt(int)         : The time lag (delta t)
+        label_file(str) : The name of the label file, required to be a npy file
+        train_percent(float)    : The percentage of data points to be used for training
     """
+    # assert label file is an npy file
+    assert label_file.endswith(".npy"), "We only take in .npy files for label file as of right now."
+
     traj_reader = TrajectoryReader(file_name, comment_char=comment_str, format=format)
 
     # read the trajectory
@@ -54,7 +61,8 @@ def SPIB_data_prep(file_name:str, dt:int, label_func:callable, train_percent=0.8
     testIdx   = randperm[num_train:]
 
     # Create labels
-    label = label_func(traj)
+    label = np.load(label_file)
+    label = torch.tensor(label).type(torch.LongTensor)
 
     # split train/test data/labels
     train_traj = traj[trainIdx,:2]
@@ -65,7 +73,7 @@ def SPIB_data_prep(file_name:str, dt:int, label_func:callable, train_percent=0.8
     return train_traj, train_labels, test_traj, test_labels
 
 
-def SPIB_train(VAE_model:VAE, filename:str, labels_func:callable, dt:int, lr=1e-3, update_labels=True, update_labels_freq=10, batch_size=1028, epochs=1000, \
+def SPIB_train(VAE_model:VAE, filename:str, label_file:str, dt:int, lr=1e-3, update_labels=True, update_labels_freq=10, batch_size=1028, epochs=1000, \
     skip=1, beta=0.003, print_every=-1, device='cpu', comment_str="#", format="txyz"):
     """
     Function that performs the SPIB training process
@@ -73,7 +81,7 @@ def SPIB_train(VAE_model:VAE, filename:str, labels_func:callable, dt:int, lr=1e-
     Args:
         VAE_model(torch.nn.Module)  : A torch model for beta-VAE
         filename(str)               : The filename of the trajectory input
-        labels(torch.tensor)        : Torch tensor for output, shape (N,d2)
+        label_file(str)             : The filename of the label input
         dt(int)                     : The time lag used in the system
         lr(float)                   : The learning rate applied for the optimizer 
         update_labels(bool)         : Whether or not we are updating the labels at various epochs
@@ -85,7 +93,7 @@ def SPIB_train(VAE_model:VAE, filename:str, labels_func:callable, dt:int, lr=1e-
     CrossEntropyLoss = nn.CrossEntropyLoss()
 
     # Prepare input data 
-    TrainX, TrainY, testX, testY = SPIB_data_prep(filename, dt, labels_func, skip=skip, comment_str=comment_str, format=format)
+    TrainX, TrainY, testX, testY = SPIB_data_prep(filename, dt, label_file, skip=skip, comment_str=comment_str, format=format)
 
     # Move data to device (could be GPU)
     TrainX = TrainX.to(device)
