@@ -66,7 +66,7 @@ def SPIB_data_prep(file_name:str, dt:int, label_func:callable, train_percent=0.8
 
 
 def SPIB_train(VAE_model:VAE, filename:str, labels_func:callable, dt:int, lr=1e-3, update_labels=True, update_labels_freq=10, batch_size=1028, epochs=1000, \
-    skip=1, beta=0.003, print_every=-1, device='cpu', comment_str="#", format="txyz"):
+    skip=1, beta=0.01, print_every=-1, threshold=0.01, device='cpu', comment_str="#", format="txyz"):
     """
     Function that performs the SPIB training process
 
@@ -102,6 +102,9 @@ def SPIB_train(VAE_model:VAE, filename:str, labels_func:callable, dt:int, lr=1e-
     TrainLoader = DataLoader(TrainDataset, batch_size=batch_size, shuffle=True)
     TestLoader  = DataLoader(TestDataset, batch_size=batch_size)
 
+    # before training, track the state population
+    _, state_population0 = VAE_model.get_Labels(TrainX)
+
     for i in range(epochs):
         avg_epoch_loss = 0
         avg_KL_loss    = 0
@@ -120,10 +123,10 @@ def SPIB_train(VAE_model:VAE, filename:str, labels_func:callable, dt:int, lr=1e-
             log_r   = VAE_model.log_rz(sampled_z)
             log_p   = VAE_model.log_pz(sampled_z, mean, logvar)
 
-            KLLoss = - beta * torch.mean(log_p - log_r, dim=0)
+            KLLoss = torch.mean(log_p - log_r, dim=0)
 
             # Accumulate the total loss 
-            totalLoss = CELoss + KLLoss
+            totalLoss = CELoss - beta * KLLoss
 
             avg_KL_loss += KLLoss.item()
             avg_CE_loss += CELoss.item()
@@ -140,23 +143,30 @@ def SPIB_train(VAE_model:VAE, filename:str, labels_func:callable, dt:int, lr=1e-
         avg_CE_loss /= len(TrainLoader)
         avg_epoch_loss /= len(TrainLoader)
 
+        # Obtain state population after every epoch
+        newStates, state_population = VAE_model.get_Labels(TrainX)
+
+        # calculate state population change
+        state_population_change = torch.sqrt(torch.sum((state_population - state_population0)**2))
+
+        # update state population 0 which is the reference
+        state_population0 = state_population 
+
+        # print if necessary
         if print_every!=-1 and (i+1) % print_every == 0:
-            _, state_population = VAE_model.get_Labels(TrainX)
             print("At Epoch {}".format(i+1))
             print("Average epoch Loss = {:.5f}".format(avg_epoch_loss))
             print("Average KL loss = {:.5f}".format(avg_KL_loss))
             print("Average CE loss = {:.5f}".format(avg_CE_loss))
             print("State population = ", state_population)
+            print("State population change = {:.5f}".format(state_population_change))
 
         # Update labels and trainloader
-        if update_labels and (i+1) % update_labels_freq ==0 :
-            # updates the labels
-            trainY, state_population = VAE_model.get_Labels(TrainX)
-
+        if update_labels and state_population_change < threshold:
             # Update the representative inputs
             VAE_model.update_representative_inputs(TrainX)
 
-            Dataset = Loader(TrainX, trainY)
+            Dataset = Loader(TrainX, newStates)
             TrainLoader = DataLoader(Dataset, batch_size=batch_size, shuffle=True)
 
             # reset the optimizer
@@ -164,6 +174,7 @@ def SPIB_train(VAE_model:VAE, filename:str, labels_func:callable, dt:int, lr=1e-
 
             print("Updating labels at epoch {}".format(i+1))
             print("State population = ", state_population)
+            print("State population change = {:.5f}".format(state_population_change))
 
 def PIB_train(Autoencoder_model, file_name:str, lr=1e-3):
     """
