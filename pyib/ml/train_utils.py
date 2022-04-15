@@ -34,7 +34,7 @@ class Loader(torch.utils.data.Dataset):
         return self.X[index], self.y[index]
 
 
-def SPIB_data_prep(file_name:str, dt:int, label_file:str, train_percent=0.8,comment_str="#", format="txyz", skip=1):
+def SPIB_data_prep(file_name:str, dt:int, label_file:str, one_hot=False, train_percent=0.8,comment_str="#", format="txyz", skip=1):
     """
     Function that prepares the data for SPIB training 
 
@@ -42,6 +42,7 @@ def SPIB_data_prep(file_name:str, dt:int, label_file:str, train_percent=0.8,comm
         file_name(str)  : The file name of the trajectory file
         dt(int)         : The time lag (delta t)
         label_file(str) : The name of the label file, required to be a npy file
+        one_hot(bool)   : Whether the labels are a one-hot encoding 
         train_percent(float)    : The percentage of data points to be used for training
     """
     # assert label file is an npy file
@@ -62,7 +63,11 @@ def SPIB_data_prep(file_name:str, dt:int, label_file:str, train_percent=0.8,comm
 
     # Create labels
     label = np.load(label_file)
+    if one_hot:
+        assert len(label.shape) == 2 , "If you choose the one hot encoding, the input data must be 2-dimensional while it is {}".format(len(label.shape))
+        label = np.argmax(label, axis=1)
     label = torch.tensor(label).type(torch.LongTensor)
+
 
     # split train/test data/labels
     train_traj = traj[trainIdx,:2]
@@ -74,7 +79,7 @@ def SPIB_data_prep(file_name:str, dt:int, label_file:str, train_percent=0.8,comm
 
 
 def SPIB_train(VAE_model:VAE, filename:str, label_file:str, dt:int, lr=1e-3, update_labels=True, batch_size=1028, epochs=1000, \
-    skip=1, beta=0.01, print_every=-1, threshold=0.01, device='cpu', comment_str="#", format="txyz"):
+    skip=1, beta=0.01, print_every=-1, threshold=0.01, patience=2, one_hot=False, device="cpu", comment_str="#", format="txyz"):
     """
     Function that performs the SPIB training process
 
@@ -84,9 +89,13 @@ def SPIB_train(VAE_model:VAE, filename:str, label_file:str, dt:int, lr=1e-3, upd
         label_file(str)             : The filename of the label input
         dt(int)                     : The time lag used in the system
         lr(float)                   : The learning rate applied for the optimizer 
-        update_labels(bool)         : Whether or not we are updating the labels at various epochs
+        update_labels(bool)         : Whether or not we update the labels
         batch_size(int)             : The batch size in which we perform training 
         epochs(int)                 : The number of epochs intended to be performed 
+        skip(int)
+        beta(float)                 : The beta present in the beta-VAE, the loss function is formulated as CE_Loss - beta * KL_Loss
+        threshold(float)            : The threshold for the change in state population
+        patience(int)               : Number of times to wait until we update the labels
     """
     # define optimizer 
     optimizer = optim.Adam(VAE_model.parameters(), lr=lr)
@@ -95,17 +104,18 @@ def SPIB_train(VAE_model:VAE, filename:str, label_file:str, dt:int, lr=1e-3, upd
     CrossEntropyLoss = nn.CrossEntropyLoss()
 
     # Prepare input data 
-    TrainX, TrainY, testX, testY = SPIB_data_prep(filename, dt, label_file, skip=skip, comment_str=comment_str, format=format)
+    TrainX, TrainY, testX, testY = SPIB_data_prep(filename, dt, label_file, skip=skip, comment_str=comment_str, format=format, one_hot=one_hot)
 
     # Move data to device (could be GPU)
     TrainX = TrainX.to(device)
     TrainY = TrainY.to(device)
     testX  = testX.to(device)
     testY  = testY.to(device)
+    VAE_model.to(device)
 
+    # Normalize the data 
     TrainX = (TrainX - TrainX.mean(axis=0))/TrainX.std(axis=0)
     testX  = (testX - testX.mean(axis=0))/testX.std(axis=0)
-    VAE_model.to(device)
 
     # Define dataset, trainloader and testloader
     TrainDataset = Loader(TrainX, TrainY)
@@ -116,6 +126,8 @@ def SPIB_train(VAE_model:VAE, filename:str, label_file:str, dt:int, lr=1e-3, upd
     # before training, track the state population --> The first iteration is probably really bad 
     # I usually see it all predicting 1 state [ ...,0,0,0,1,0,0, ...]
     _, state_population0 = VAE_model.get_Labels(TrainX)
+
+    labels_update_count = 0
 
     for i in range(epochs):
         avg_epoch_loss = 0
@@ -195,29 +207,33 @@ def SPIB_train(VAE_model:VAE, filename:str, label_file:str, dt:int, lr=1e-3, upd
             print("Average epoch Loss = {:.5f}".format(avg_epoch_loss))
             print("Average KL loss = {:.5f}".format(avg_KL_loss))
             print("Average CE loss = {:.5f}".format(avg_CE_loss))
-            print("Average test Loss = {:,5f}".format(avg_Loss_test))
+            print("Average test Loss = {:.5f}".format(avg_Loss_test))
             print("State population = ", state_population)
             print("State population change = {:.5f}".format(state_population_change))
 
         # Update labels and trainloader
         if update_labels and state_population_change < threshold:
-            # Update the representative inputs
-            VAE_model.update_representative_inputs(TrainX)
+            labels_update_count += 1
+            if labels_update_count > patience:
+                # Update the representative inputs
+                VAE_model.update_representative_inputs(TrainX)
 
-            # Update training set
-            Dataset = Loader(TrainX, newStates)
-            TrainLoader = DataLoader(Dataset, batch_size=batch_size, shuffle=True)
+                # Update training set
+                Dataset = Loader(TrainX, newStates)
+                TrainLoader = DataLoader(Dataset, batch_size=batch_size, shuffle=True)
 
-            # Update test set
-            TestSet = Loader(testX, newTestStates)
-            TestLoader = DataLoader(TestSet, batch_size=batch_size)
+                # Update test set
+                TestSet = Loader(testX, newTestStates)
+                TestLoader = DataLoader(TestSet, batch_size=batch_size)
 
-            # reset the optimizer
-            optimizer = optim.Adam(VAE_model.parameters(), lr=lr)
-            print("###################################")
-            print("Updating labels at epoch {}".format(i+1))
-            print("State population = ", state_population)
-            print("State population change = {:.5f}".format(state_population_change))
+                # reset the optimizer
+                optimizer = optim.Adam(VAE_model.parameters(), lr=lr)
+                print("###################################")
+                print("Updating labels at epoch {}".format(i+1))
+                print("State population = ", state_population)
+                print("State population change = {:.5f}".format(state_population_change))
+
+                labels_update_count = 0
 
 def PIB_train(Autoencoder_model, file_name:str, lr=1e-3):
     """
