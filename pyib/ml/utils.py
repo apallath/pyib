@@ -47,7 +47,13 @@ def prep_data_PIB(file:str, dt:int):
 
     return X, y
 
-def torch_log_sum_exp(X, dim=None):
+def Normalize_data(X:torch.tensor, axis=None):
     """
-    logsumexp implemented in torch
+    Normalize the data along dimension dim
     """
+    if axis is not None:
+        X_norm = (X - X.mean(axis=axis))/X.std(axis=axis)
+    else:
+        X_norm = (X - X.mean())/X.std()
+    
+    return X_norm

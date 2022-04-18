@@ -1,6 +1,7 @@
 import numpy as np
 import torch.nn as nn
 import torch
+import logging
 
 from .layers import NonLinear
 from .Distributions import log_Normal_diag
@@ -101,8 +102,8 @@ class VAE(nn.Module):
     """
     Encoderdimensions(list)     : The encoder dimension passed in as a list e.g [2,3]
     """
-    def __init__(self, Encoderdimensions:list, hidden_dim:int, Decoderdimensions:list, RepresentativeD:int,\
-         activation=nn.ReLU(), prior='VampPrior'):
+    def __init__(self, Encoderdimensions:list, hidden_dim:int, Decoderdimensions:list, 
+         activation=nn.ReLU(), prior='VampPrior', device="cpu", representative_dim=None, restrictLogVar=True):
         super().__init__()
         self.Encoderdimensions = Encoderdimensions
         self.Decoderdimensions = Decoderdimensions
@@ -114,39 +115,52 @@ class VAE(nn.Module):
         # Name of the prior --> either "VampPrior" or "Normal"
         self.prior             = prior
 
-        # The dimension of the representative inputs for VampPrior
-        self._representativeD  = RepresentativeD
-
         # The first element of encoder dimension is the input dimension
         self.input_dim         = self.Encoderdimensions[0]
 
         # The last element of the decoder dimension is the output dimension
         self.output_dim        = self.Decoderdimensions[-1]
 
+        # set the representative dimension, initially set to output_dim
+        if representative_dim is None:
+            self.representative_dim = self.output_dim
+        else:
+            self.representative_dim = representative_dim
+
+        # whether or not we are restricting logVar to within range [-10,0] --> could add option to change this too
+        self.restrictLogVar = restrictLogVar
+
+        # device name 
+        self.device = device
+
         assert self.Nencoder >=1  , "Number of layers must be larger or equal to 1 as it consist of (intput_dim, dim1,..)"
         assert self.Ndecoder >=1  , "Number of layers must be larger or equal to 1 as it consist of (dim1, dim2, ... ouput_dim"
 
         # Initialize encoder and decoder 
-        self.encoderMean, self.encoderLogVar = self._encoder_init()
+        self.encoder , self.encoderMean, self.encoderLogVar = self._encoder_init()
         self.decoder = self._decoder_init()
         self._representativeInputs_init()
+
 
     def _encoder_init(self):
         """
         Initialization of the encoder 
         """
+        encoder = []
         Meanlayers = []
         logVarlayers = []
         for i in range(self.Nencoder-1):
-            Meanlayers.append(NonLinear(self.Encoderdimensions[i], self.Encoderdimensions[i+1], bias=True, activation=self.activation))
-            logVarlayers.append(NonLinear(self.Encoderdimensions[i], self.Encoderdimensions[i+1], bias=True, activation=self.activation))
-        Meanlayers.append(NonLinear(self.Encoderdimensions[-1], self.hidden_dim, bias=True, activation=None))
-        logVarlayers.append(NonLinear(self.Encoderdimensions[-1], self.hidden_dim, bias=True, activation=None))
+            encoder.append(NonLinear(self.Encoderdimensions[i], self.Encoderdimensions[i+1], bias=True, activation=self.activation))
 
-        Meanlayers = nn.Sequential(*Meanlayers)
-        logVarlayers = nn.Sequential(*logVarlayers)
+        Meanlayers = NonLinear(self.Encoderdimensions[-1], self.hidden_dim, bias=True, activation=None)
+
+        if self.restrictLogVar:
+            logVarlayers = nn.Sequential(NonLinear(self.Encoderdimensions[-1], self.hidden_dim, bias=True, activation=None), \
+                nn.Sigmoid())
+        else:
+            logVarlayers = NonLinear(self.Encoderdimensions[-1], self.hidden_dim, bias=True, activation=None)
         
-        return Meanlayers, logVarlayers
+        return nn.Sequential(*encoder), Meanlayers, logVarlayers
 
     def _decoder_init(self):
         """
@@ -167,14 +181,20 @@ class VAE(nn.Module):
         """
         Function that initializes the representative inputs for the VampPrior
         """
-        self.__weights_input = torch.eye((self._representativeD), requires_grad=False)
-        self.__pseudo_input  = torch.eye((self._representativeD), requires_grad=False)
+        # Here, output_dim is the number of labels for the metastable states 
+
+        # This is of shape (output_dim, output_dim)
+        # By passing through a network of (output_dim, 1) --> (output_dim, 1) 
+        # These corresponds to uk, where k = i, ..., output_dim
+        self.__weights_input = torch.eye(self.representative_dim, m=self.representative_dim, requires_grad=False, device=self.device)
+
+        # This is of shape (output_dim, input_dim), which then by passing into encoder NN will give 
+        # (output_dim, z_dim) --> p(z|uk) where k = i, .., output_dim
+        self.__pseudo_input  = torch.eye(self.representative_dim, m=self.input_dim, requires_grad=False, device=self.device)
 
         # Softmax is used here to make sure that \sum_{i} w_{i} = 1
-        self.__weight_layer  = nn.Sequential(nn.Linear(self._representativeD, 1, bias=False), nn.Softmax(dim=0))
-        self.__pseudo_input_layer = NonLinear(self._representativeD, self.input_dim, bias=False,\
-             activation=nn.Hardtanh(min_val=0.0, max_val=1.0))
-    
+        self.__weight_layer  = nn.Sequential(nn.Linear(self.output_dim, 1, bias=False), nn.Softmax(dim=0))
+
     def reparametrize(self, mean, logvar):
         """
         Performs the reparameterization trick where 
@@ -182,9 +202,27 @@ class VAE(nn.Module):
         """
         # Var^{1/2}
         std = torch.exp(0.5 * logvar)
-        eps = torch.rand_like(std)
+        eps = torch.rand_like(std, device=self.device)
 
         return mean + std * eps, eps
+    
+    def _encode(self, X):
+        """
+        Function for encoder
+
+        Return:
+            mean(torch.tensor)
+            logVar(torch.tensor)
+        """
+        X = self.encoder(X)
+
+        mean = self.encoderMean(X)
+        if self.restrictLogVar:
+            logvar = -10*self.encoderLogVar(X)
+        else:
+            logvar = self.encoderLogVar(X)
+        
+        return mean, logvar
     
     def forward(self,X):
         """
@@ -197,27 +235,48 @@ class VAE(nn.Module):
             logvar              : The logvar output from the encoder
             z_sample            : The randomly sampled Z from N(0,I)
         """
-        mean = self.encoderMean(X)
-        logvar = self.encoderLogVar(X)
+        mean, logvar = self._encode(X)
+
         decoder_input, z_sample = self.reparametrize(mean, logvar)
         decoder_output = self.decoder(decoder_input)
 
         return decoder_output, mean, logvar, z_sample
     
-    def evaluate(self, X):
+    def evaluate(self, X, to_numpy=True):
         """
+        Function that evaluates the output for any data point
+
+        Args:
+            X(torch.tensor) : Input data with shape (N,input_dim)
         """
+        assert len(X.shape) == 2 , "Input must be 2-dimensional torch.tensor but the user input is dim = {}".format(len(X.shape))
+        assert X.shape[1] == self.input_dim , "Input data must have the same dimension as the required input dimension = {}".format(self.input_dim)
+
         with torch.no_grad():
             decoder_output, mean, logVar, _ = self.forward(X)
 
             index = torch.argmax(decoder_output, axis=1, keepdim=True)
 
-        return index, mean, logVar
+        if to_numpy:
+            index , mean, logVar, decoder_output = index.detach().numpy(), \
+                                                    mean.detach().numpy(), \
+                                                    logVar.detach().numpy(), \
+                                                    decoder_output.detach().numpy()
+
+        return index, mean, logVar, decoder_output
     
     def log_pz(self,z, mean, logvar):
         """
         Function that calculates the log of the encoder output p(z|X) ~ N(mu(X), std(X))
         where mu(X) and std(X) are the encoder NN
+
+        Args:
+            z(torch.tensor)     : Sampled z from distribution N(z;mean,var), shape (N,d)
+            mean(torch.tensor)  : Mean is torch tensor of shape (d)
+            logvar(torch.tensor): Log var is torch tensor of shape (d)
+        
+        Return :
+            log_p(z)    : The log likelihood of the data points
         """
         # input z (N, hidden_dim)
         # output log_p (N,1)
@@ -232,13 +291,12 @@ class VAE(nn.Module):
         Args:
             z (torch.tensor)    : Tensor passed in with shape (N, hidden_dim)
         """
-        # U should be of shape (Reprensetative_D, input_dim)
-        # U notation follows the paper 
-        U = self.__pseudo_input_layer(self.__pseudo_input)
+        # uk should be of shape (output_dim, input_dim)
+        # where k = i, .., output_dim
+        uk = self.__pseudo_input
 
         # shape (Representative_D, hidden_dim)
-        representative_Z_mean = self.encoderMean(U)
-        representative_Z_logvar = self.encoderLogVar(U)
+        representative_Z_mean, representative_Z_logvar = self._encode(uk)
 
         # Shape (1, Representative_D, hidden_dim)
         representative_Z_mean = representative_Z_mean.unsqueeze(0)
@@ -255,13 +313,20 @@ class VAE(nn.Module):
         w = self.__weight_layer(self.__weights_input)
 
         # Shape (N, 1)
-        log_p  = torch.log(torch.sum(torch.exp(log_p) @ w + 1e-10, dim=1, keepdim=True))
+        log_r  = torch.log(torch.exp(log_p) @ w + 1e-10)
 
-        return log_p
+        return log_r
     
-    def update_Labels(self, X):
+    def get_Labels(self, X):
         """
-        Update the labels for the following X
+        Update the labels as well as the state population for the input X
+
+        Args:
+            X(torch.tensor) : Torch tensor of the shape (N, input_dim)
+        
+        Outputs:
+            index(torch.tensor) : Return the state number that each of the input data resides in
+            state_population(torch.tensor)  : Return the number of data points in each of the states 
         """
         with torch.no_grad():
             # shape (N, d2)
@@ -269,5 +334,76 @@ class VAE(nn.Module):
 
             # argmax 
             index  = torch.argmax(decoder_output, dim=1).flatten()
+
+            # then get the one hot vector
+            one_hot = nn.functional.one_hot(index, num_classes=self.output_dim)
+
+            # get number of data points per state
+            state_population = one_hot.sum(axis=0)
+
+            state_population = state_population/state_population.sum()
         
-        return index
+        return index, state_population
+
+    def update_representative_inputs(self, X:torch.tensor):
+        """
+        Function that updates the representative inputs
+        """
+        with torch.no_grad():
+            # Labels are of shape (N, output_dim)
+            # mean is of shape (N, hidden_dim)
+            # logVar is of shape (N, hidden_dim)
+            labels, z, _ , _ = self.forward(X)
+
+            # argmax along dim1, --> (N,)
+            labels = torch.argmax(labels, dim=1)
+
+            # convert labels to one hot vector (N, output_dim)
+            one_hot = nn.functional.one_hot(labels,num_classes=self.output_dim)
+
+            # sum along dimension 0 to obtain how many data points are in each of the metastable state
+            #  [ [ 1 0 0 ] , [ 0 1 0 ] ... ]
+            state_population = one_hot.sum(axis=0)
+
+            # set the new representative inputs
+            # append to representative inputs if state_population[i] is not 0
+            # This means that representative_inputs which was shape (output_dim, input_dim)
+            # could change to some other (Nchange, input_dim)
+            representative_inputs = []
+
+            for i in range(self.output_dim):
+                if state_population[i] > 0:
+                    # among the state i, find the mean z --> then find the x_k that gives a point 
+                    # closest to mean_z, call that our representative input
+
+                    # This is the index where of [0,1,1,...] whether or not the point is in state i
+                    # shape (N, )
+                    index = one_hot[:,i].bool()
+
+                    # find the center z 
+                    # shape (1, hidden_dim)
+                    center_z = z[index].mean().reshape(1,-1)
+
+                    # find the point closest to point z
+                    # shape (N,)
+                    dist = torch.sqrt(((z - center_z)**2).sum(axis=1))
+                    minIndex = torch.argmin(dist)
+
+                    # append the point at minIndex to representative_input
+                    representative_inputs.append(X[minIndex].reshape(1,-1))
+
+        representative_inputs = torch.cat(representative_inputs, dim=0)
+
+        # reset representative_dim
+        self.representative_dim = representative_inputs.shape[0]
+
+        # reset the representative weight network
+        self.__weight_layer = nn.Sequential(nn.Linear(self.representative_dim, 1, bias=False), nn.Softmax(dim=0))
+
+        # reset the weights to be identity mapping initially 
+        self.__weight_layer[0].weights = torch.ones((self.representative_dim,1), requires_grad=True, device=self.device)
+
+        self.__weights_input = torch.eye(self.representative_dim, device=self.device, requires_grad=False)
+
+        # reset the pseudo input u_k
+        self.__pseudo_input = representative_inputs
