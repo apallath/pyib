@@ -148,6 +148,7 @@ def SPIB_train(VAE_model:VAE, filename:str, label_file:str, dt:int, lr=1e-3, upd
             CELoss = CrossEntropyLoss(y_pred, y)
 
             # Calculate the log_r, log_p, KL = <log(p/r)>
+            # Shape (N,1)
             log_r   = VAE_model.log_rz(sampled_z)
             log_p   = VAE_model.log_pz(sampled_z, mean, logvar)
             KLLoss = torch.mean(log_p - log_r, dim=0)

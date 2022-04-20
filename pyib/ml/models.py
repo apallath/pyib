@@ -280,7 +280,7 @@ class VAE(nn.Module):
         """
         # input z (N, hidden_dim)
         # output log_p (N,1)
-        log_p = log_Normal_diag(z,mean, logvar)
+        log_p = log_Normal_diag(z,mean, logvar,dim=1, keepdims=True)
 
         return log_p
 
