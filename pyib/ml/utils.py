@@ -57,3 +57,13 @@ def Normalize_data(X:torch.tensor, axis=None):
         X_norm = (X - X.mean())/X.std()
     
     return X_norm
+
+def ToOneHotVector(X:np.ndarray, labels:np.ndarray,NUM_CLASSES=None):
+    if NUM_CLASSES is None:
+        NUM_CLASSES = X.max()
+    
+    one_hot = np.zeros((X.shape[0], NUM_CLASSES))
+    index   = np.arange(X.shape[0])
+    one_hot[index, labels] = 1
+
+    return one_hot
