@@ -197,12 +197,15 @@ class VAE(nn.Module):
         """
         Function used by user to overwrite the bad initial guess for representative input
 
-        X(torch.tensor) : Shape (N, input_dim)
-        labels  : Shape (N,1)
+        Args:
+            X(torch.tensor) : Shape (N, input_dim)
+            labels  : Shape (N,1)
         """
         assert X.shape[1] == self.input_dim, "dimension of X is incorrect, it needs to be {}".format(self.input_dim)
         self.__pseudo_input = torch.zeros(self.representative_dim, self.input_dim, requires_grad=False, device=self.device)
 
+        # For each of the initial guess label, we find the mean among the x to use as initial uk
+        # e.g. if label == 1, we take all the points which we initial guessed as 1, {xi,yi} --> take the mean {xmean, ymean}
         for i in range(self.representative_dim):
             index = (labels==i)
             self.__pseudo_input[i] = X[index,:].mean(axis=0) 
@@ -268,12 +271,15 @@ class VAE(nn.Module):
             decoder_output, mean, logVar, _ = self.forward(X)
 
             index = torch.argmax(decoder_output, axis=1, keepdim=True)
+            
+            index_one_hot = torch.nn.functional.one_hot(index.flatten(), num_classes=self.output_dim)
 
         if to_numpy:
-            index , mean, logVar, decoder_output = index.detach().numpy(), \
+            index , mean, logVar, decoder_output, index_one_hot = index.detach().numpy(), \
                                                     mean.detach().numpy(), \
                                                     logVar.detach().numpy(), \
-                                                    decoder_output.detach().numpy()
+                                                    decoder_output.detach().numpy(), \
+                                                    index_one_hot.detach().numpy
 
         return index, mean, logVar, decoder_output
     
