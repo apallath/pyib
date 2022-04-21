@@ -1,7 +1,6 @@
 import numpy as np
 import torch.nn as nn
 import torch
-import logging
 
 from .layers import NonLinear
 from .Distributions import log_Normal_diag
@@ -141,7 +140,6 @@ class VAE(nn.Module):
         self.decoder = self._decoder_init()
         self._representativeInputs_init()
 
-
     def _encoder_init(self):
         """
         Initialization of the encoder 
@@ -194,6 +192,20 @@ class VAE(nn.Module):
 
         # Softmax is used here to make sure that \sum_{i} w_{i} = 1
         self.__weight_layer  = nn.Sequential(nn.Linear(self.output_dim, 1, bias=False), nn.Softmax(dim=0))
+    
+    def RepresentativeInputs_init(self, X:torch.tensor, labels:torch.tensor):
+        """
+        Function used by user to overwrite the bad initial guess for representative input
+
+        X(torch.tensor) : Shape (N, input_dim)
+        labels  : Shape (N,1)
+        """
+        assert X.shape[1] == self.input_dim, "dimension of X is incorrect, it needs to be {}".format(self.input_dim)
+        self.__pseudo_input = torch.zeros(self.representative_dim, self.input_dim, requires_grad=False, device=self.device)
+
+        for i in range(self.representative_dim):
+            index = (labels==i)
+            self.__pseudo_input[i] = X[index,:].mean(axis=0) 
 
     def reparametrize(self, mean, logvar):
         """
@@ -204,7 +216,7 @@ class VAE(nn.Module):
         std = torch.exp(0.5 * logvar)
         eps = torch.rand_like(std, device=self.device)
 
-        return mean + std * eps, eps
+        return mean + std * eps
     
     def _encode(self, X):
         """
@@ -237,10 +249,10 @@ class VAE(nn.Module):
         """
         mean, logvar = self._encode(X)
 
-        decoder_input, z_sample = self.reparametrize(mean, logvar)
-        decoder_output = self.decoder(decoder_input)
+        z_sampled = self.reparametrize(mean, logvar)
+        decoder_output = self.decoder(z_sampled)
 
-        return decoder_output, mean, logvar, z_sample
+        return decoder_output, mean, logvar, z_sampled
     
     def evaluate(self, X, to_numpy=True):
         """
@@ -299,21 +311,21 @@ class VAE(nn.Module):
         representative_Z_mean, representative_Z_logvar = self._encode(uk)
 
         # Shape (1, Representative_D, hidden_dim)
-        representative_Z_mean = representative_Z_mean.unsqueeze(0)
-        representative_Z_logvar = representative_Z_logvar.unsqueeze(0)
+        representative_mean = representative_Z_mean.unsqueeze(0)
+        representative_logvar = representative_Z_logvar.unsqueeze(0)
 
         # expand z  (N,1, hidden_dim)
         z_expand = z.unsqueeze(1)
 
         # Find the log likelihood --> (N, Representative_D)
-        log_p  = log_Normal_diag(z_expand, representative_Z_mean, representative_Z_logvar, dim=2)
+        log_p  = log_Normal_diag(z_expand, representative_mean, representative_logvar, dim=2)
 
         # Obtain the weights w --> which we will then dot with log_p
         # shape (Representative_D, 1)
         w = self.__weight_layer(self.__weights_input)
 
         # Shape (N, 1)
-        log_r  = torch.log(torch.exp(log_p) @ w + 1e-10)
+        log_r  = torch.log(torch.exp(log_p)@w + 1e-10)
 
         return log_r
     
@@ -382,7 +394,7 @@ class VAE(nn.Module):
 
                     # find the center z 
                     # shape (1, hidden_dim)
-                    center_z = z[index].mean().reshape(1,-1)
+                    center_z = z[index].mean(axis=0).reshape(1,-1)
 
                     # find the point closest to point z
                     # shape (N,)
@@ -407,3 +419,6 @@ class VAE(nn.Module):
 
         # reset the pseudo input u_k
         self.__pseudo_input = representative_inputs
+    
+    def get_psuedo_input(self):
+        return self.__pseudo_input

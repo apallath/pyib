@@ -53,6 +53,9 @@ def SPIB_data_prep(file_name:str, dt:int, label_file:str, one_hot=False, train_p
     # read the trajectory
     time, traj = traj_reader.read_traj(skip=skip)
     traj = torch.tensor(traj, dtype=torch.float32)
+    traj = (traj - traj.mean(axis=0))/traj.std(axis=0)
+    traj = traj[:,:2]
+
     N = len(traj) - dt
     num_train = int(N * train_percent)
 
@@ -75,7 +78,7 @@ def SPIB_data_prep(file_name:str, dt:int, label_file:str, one_hot=False, train_p
     test_traj  = traj[testIdx, :2]
     test_labels = label[testIdx + dt]
 
-    return train_traj, train_labels, test_traj, test_labels
+    return train_traj, train_labels, test_traj, test_labels, traj, label
 
 
 def SPIB_train(VAE_model:VAE, filename:str, label_file:str, dt:int, lr=1e-3, update_labels=True, batch_size=1028, epochs=1000, \
@@ -104,7 +107,8 @@ def SPIB_train(VAE_model:VAE, filename:str, label_file:str, dt:int, lr=1e-3, upd
     CrossEntropyLoss = nn.CrossEntropyLoss()
 
     # Prepare input data 
-    TrainX, TrainY, testX, testY = SPIB_data_prep(filename, dt, label_file, skip=skip, comment_str=comment_str, format=format, one_hot=one_hot)
+    TrainX, TrainY, testX, testY, traj, label = SPIB_data_prep(filename, dt, label_file, skip=skip, comment_str=comment_str, format=format, one_hot=one_hot)
+    # data comes normalized
 
     # Move data to device (could be GPU)
     TrainX = TrainX.to(device)
@@ -112,10 +116,6 @@ def SPIB_train(VAE_model:VAE, filename:str, label_file:str, dt:int, lr=1e-3, upd
     testX  = testX.to(device)
     testY  = testY.to(device)
     VAE_model.to(device)
-
-    # Normalize the data 
-    TrainX = (TrainX - TrainX.mean(axis=0))/TrainX.std(axis=0)
-    testX  = (testX - testX.mean(axis=0))/testX.std(axis=0)
 
     # Define dataset, trainloader and testloader
     TrainDataset = Loader(TrainX, TrainY)
@@ -125,6 +125,7 @@ def SPIB_train(VAE_model:VAE, filename:str, label_file:str, dt:int, lr=1e-3, upd
 
     # before training, track the state population --> The first iteration is probably really bad 
     # I usually see it all predicting 1 state [ ...,0,0,0,1,0,0, ...]
+    VAE_model.RepresentativeInputs_init(traj, label)
     _, state_population0 = VAE_model.get_Labels(TrainX)
 
     labels_update_count = 0
@@ -154,7 +155,7 @@ def SPIB_train(VAE_model:VAE, filename:str, label_file:str, dt:int, lr=1e-3, upd
             KLLoss = torch.mean(log_p - log_r, dim=0)
 
             # Accumulate the total loss 
-            totalLoss = CELoss - beta * KLLoss
+            totalLoss = CELoss + beta * KLLoss
             avg_KL_loss += KLLoss.item()
             avg_CE_loss += CELoss.item()
             avg_epoch_loss += totalLoss.item()
