@@ -100,15 +100,11 @@ def SPIB_train(VAE_model:VAE, filename:str, label_file:str, dt:int, lr=1e-3, upd
         threshold(float)            : The threshold for the change in state population
         patience(int)               : Number of times to wait until we update the labels
     """
-    # define optimizer 
-    optimizer = optim.Adam(VAE_model.parameters(), lr=lr)
-
     # Define the losses 
     CrossEntropyLoss = nn.CrossEntropyLoss()
 
-    # Prepare input data 
+    # Prepare input data , data comes normalized
     TrainX, TrainY, testX, testY, traj, label = SPIB_data_prep(filename, dt, label_file, skip=skip, comment_str=comment_str, format=format, one_hot=one_hot)
-    # data comes normalized
 
     # Move data to device (could be GPU)
     TrainX = TrainX.to(device)
@@ -116,6 +112,9 @@ def SPIB_train(VAE_model:VAE, filename:str, label_file:str, dt:int, lr=1e-3, upd
     testX  = testX.to(device)
     testY  = testY.to(device)
     VAE_model.to(device)
+
+    # define optimizer 
+    optimizer = optim.Adam(VAE_model.parameters(), lr=lr)
 
     # Define dataset, trainloader and testloader
     TrainDataset = Loader(TrainX, TrainY)
@@ -196,7 +195,7 @@ def SPIB_train(VAE_model:VAE, filename:str, label_file:str, dt:int, lr=1e-3, upd
                 KLLoss = torch.mean(log_p - log_r, dim=0)
 
                 # totalLoss
-                totalLoss = CELoss - beta * KLLoss
+                totalLoss = CELoss + beta * KLLoss
 
                 avg_Loss_test += totalLoss.item()
             avg_Loss_test = avg_Loss_test / len(TestLoader)
@@ -232,12 +231,5 @@ def SPIB_train(VAE_model:VAE, filename:str, label_file:str, dt:int, lr=1e-3, upd
                 optimizer = optim.Adam(VAE_model.parameters(), lr=lr)
                 print("###################################")
                 print("Updating labels at epoch {}".format(i+1))
-                print("State population = ", state_population)
-                print("State population change = {:.5f}".format(state_population_change))
 
                 labels_update_count = 0
-
-def PIB_train(Autoencoder_model, file_name:str, lr=1e-3):
-    """
-    """
-    pass
