@@ -1,11 +1,11 @@
-### Training utility functions ###
 import torch
-from .models import VAE
+from .models import SPIB
 from ..md.utils import TrajectoryReader
 import torch.nn as nn
-import torch.optim as optim 
+import torch.optim as optim
 from torch.utils.data import DataLoader
 import numpy as np
+
 
 class Loader(torch.utils.data.Dataset):
     """
@@ -15,15 +15,15 @@ class Loader(torch.utils.data.Dataset):
         delta_t(int)    : The lag time dt
     """
     def __init__(self, X:torch.tensor, labels:torch.tensor) -> None:
-        # Convert trajectory to tensor 
+        # Convert trajectory to tensor
         self.X  = X
 
         # Generates a label of shape (N,d2)
         self.y = labels
-    
+
     def __len__(self):
-        return len(self.X) 
-    
+        return len(self.X)
+
     def __getitem__(self,index):
         """
         Returns the input X and time index t, and y at time index t+dt
@@ -36,13 +36,13 @@ class Loader(torch.utils.data.Dataset):
 
 def SPIB_data_prep(file_name:str, dt:int, label_file:str, one_hot=False, train_percent=0.8,comment_str="#", format="txyz", skip=1):
     """
-    Function that prepares the data for SPIB training 
+    Function that prepares the data for SPIB training
 
     Args:
         file_name(str)  : The file name of the trajectory file
         dt(int)         : The time lag (delta t)
         label_file(str) : The name of the label file, required to be a npy file
-        one_hot(bool)   : Whether the labels are a one-hot encoding 
+        one_hot(bool)   : Whether the labels are a one-hot encoding
         train_percent(float)    : The percentage of data points to be used for training
     """
     # assert label file is an npy file
@@ -81,26 +81,26 @@ def SPIB_data_prep(file_name:str, dt:int, label_file:str, one_hot=False, train_p
     return train_traj, train_labels, test_traj, test_labels, traj, label
 
 
-def SPIB_train(VAE_model:VAE, filename:str, label_file:str, dt:int, lr=1e-3, update_labels=True, batch_size=1028, epochs=1000, \
+def SPIB_train(SPIB_model:SPIB, filename:str, label_file:str, dt:int, lr=1e-3, update_labels=True, batch_size=1028, epochs=1000, \
     skip=1, beta=0.01, print_every=-1, threshold=0.01, patience=2, one_hot=False, device="cpu", comment_str="#", format="txyz"):
     """
     Function that performs the SPIB training process
 
     Args:
-        VAE_model(torch.nn.Module)  : A torch model for beta-VAE
+        SPIB_model(torch.nn.Module)  : A torch model for beta-SPIB
         filename(str)               : The filename of the trajectory input
         label_file(str)             : The filename of the label input
         dt(int)                     : The time lag used in the system
-        lr(float)                   : The learning rate applied for the optimizer 
+        lr(float)                   : The learning rate applied for the optimizer
         update_labels(bool)         : Whether or not we update the labels
-        batch_size(int)             : The batch size in which we perform training 
-        epochs(int)                 : The number of epochs intended to be performed 
+        batch_size(int)             : The batch size in which we perform training
+        epochs(int)                 : The number of epochs intended to be performed
         skip(int)
-        beta(float)                 : The beta present in the beta-VAE, the loss function is formulated as CE_Loss - beta * KL_Loss
+        beta(float)                 : The beta present in the beta-SPIB, the loss function is formulated as CE_Loss - beta * KL_Loss
         threshold(float)            : The threshold for the change in state population
         patience(int)               : Number of times to wait until we update the labels
     """
-    # Define the losses 
+    # Define the losses
     CrossEntropyLoss = nn.CrossEntropyLoss()
 
     # Prepare input data , data comes normalized
@@ -111,10 +111,10 @@ def SPIB_train(VAE_model:VAE, filename:str, label_file:str, dt:int, lr=1e-3, upd
     TrainY = TrainY.to(device)
     testX  = testX.to(device)
     testY  = testY.to(device)
-    VAE_model.to(device)
+    SPIB_model.to(device)
 
-    # define optimizer 
-    optimizer = optim.Adam(VAE_model.parameters(), lr=lr)
+    # define optimizer
+    optimizer = optim.Adam(SPIB_model.parameters(), lr=lr)
 
     # Define dataset, trainloader and testloader
     TrainDataset = Loader(TrainX, TrainY)
@@ -122,10 +122,10 @@ def SPIB_train(VAE_model:VAE, filename:str, label_file:str, dt:int, lr=1e-3, upd
     TrainLoader = DataLoader(TrainDataset, batch_size=batch_size, shuffle=True)
     TestLoader  = DataLoader(TestDataset, batch_size=batch_size)
 
-    # before training, track the state population --> The first iteration is probably really bad 
+    # before training, track the state population --> The first iteration is probably really bad
     # I usually see it all predicting 1 state [ ...,0,0,0,1,0,0, ...]
-    VAE_model.RepresentativeInputs_init(traj, label)
-    _, state_population0 = VAE_model.get_Labels(TrainX)
+    SPIB_model.RepresentativeInputs_init(traj, label)
+    _, state_population0 = SPIB_model.get_Labels(TrainX)
 
     labels_update_count = 0
 
@@ -135,63 +135,63 @@ def SPIB_train(VAE_model:VAE, filename:str, label_file:str, dt:int, lr=1e-3, upd
         avg_CE_loss    = 0
 
         # set model to training mode
-        VAE_model.train()
+        SPIB_model.train()
 
         for X, y in TrainLoader:
             # Clear the gradient in optimizer
             optimizer.zero_grad()
 
             # obtain the y prediction
-            y_pred, mean, logvar, sampled_z = VAE_model(X)
+            y_pred, mean, logvar, sampled_z = SPIB_model(X)
 
             # Calculate the reconstruction loss or in this case crossentropyloss
             CELoss = CrossEntropyLoss(y_pred, y)
 
             # Calculate the log_r, log_p, KL = <log(p/r)>
             # Shape (N,1)
-            log_r   = VAE_model.log_rz(sampled_z)
-            log_p   = VAE_model.log_pz(sampled_z, mean, logvar)
+            log_r   = SPIB_model.log_rz(sampled_z)
+            log_p   = SPIB_model.log_pz(sampled_z, mean, logvar)
             KLLoss = torch.mean(log_p - log_r, dim=0)
 
-            # Accumulate the total loss 
+            # Accumulate the total loss
             totalLoss = CELoss + beta * KLLoss
             avg_KL_loss += KLLoss.item()
             avg_CE_loss += CELoss.item()
             avg_epoch_loss += totalLoss.item()
-            
+
             # Call back propagation
             totalLoss.backward()
 
-            # Step in optimizer 
+            # Step in optimizer
             optimizer.step()
-        
+
         # Average the KL, CE, epoch loss
         avg_KL_loss /= len(TrainLoader)
         avg_CE_loss /= len(TrainLoader)
         avg_epoch_loss /= len(TrainLoader)
 
         # Obtain state population after every epoch
-        newStates, state_population = VAE_model.get_Labels(TrainX)
+        newStates, state_population = SPIB_model.get_Labels(TrainX)
 
         # calculate state population change
         state_population_change = torch.sqrt(torch.sum((state_population - state_population0)**2))
 
         # update state population 0 which is the reference
-        state_population0 = state_population 
+        state_population0 = state_population
 
-        # Perform testing 
-        VAE_model.eval()
+        # Perform testing
+        SPIB_model.eval()
         avg_Loss_test = 0
         with torch.no_grad():
             for X , y in TestLoader:
-                y_pred, mean, logvar, sampled_z = VAE_model(X)
+                y_pred, mean, logvar, sampled_z = SPIB_model(X)
 
                 # Calculate the reconstruction loss or in this case crossentropyloss
                 CELoss = CrossEntropyLoss(y_pred, y)
 
                 # Calculate the log_r, log_p, KL = <log(p/r)>
-                log_r   = VAE_model.log_rz(sampled_z)
-                log_p   = VAE_model.log_pz(sampled_z, mean, logvar)
+                log_r   = SPIB_model.log_rz(sampled_z)
+                log_p   = SPIB_model.log_pz(sampled_z, mean, logvar)
                 KLLoss = torch.mean(log_p - log_r, dim=0)
 
                 # totalLoss
@@ -199,7 +199,7 @@ def SPIB_train(VAE_model:VAE, filename:str, label_file:str, dt:int, lr=1e-3, upd
 
                 avg_Loss_test += totalLoss.item()
             avg_Loss_test = avg_Loss_test / len(TestLoader)
-            newTestStates, _ = VAE_model.get_Labels(testX)
+            newTestStates, _ = SPIB_model.get_Labels(testX)
 
         # print if necessary
         if print_every!=-1 and (i+1) % print_every == 0:
@@ -217,7 +217,7 @@ def SPIB_train(VAE_model:VAE, filename:str, label_file:str, dt:int, lr=1e-3, upd
             labels_update_count += 1
             if labels_update_count > patience:
                 # Update the representative inputs
-                VAE_model.update_representative_inputs(TrainX)
+                SPIB_model.update_representative_inputs(TrainX)
 
                 # Update training set
                 Dataset = Loader(TrainX, newStates)
@@ -228,7 +228,7 @@ def SPIB_train(VAE_model:VAE, filename:str, label_file:str, dt:int, lr=1e-3, upd
                 TestLoader = DataLoader(TestSet, batch_size=batch_size)
 
                 # reset the optimizer
-                optimizer = optim.Adam(VAE_model.parameters(), lr=lr)
+                optimizer = optim.Adam(SPIB_model.parameters(), lr=lr)
                 print("###################################")
                 print("Updating labels at epoch {}".format(i+1))
 

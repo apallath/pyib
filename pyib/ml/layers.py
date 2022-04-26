@@ -1,9 +1,10 @@
-import torch
 import torch.nn as nn
 
 """
 Different layers normally used in torch
 """
+
+
 class NonLinear(nn.Module):
     def __init__(self, input_dim, output_dim, bias=True, activation=nn.ReLU()):
         super().__init__()
@@ -15,8 +16,8 @@ class NonLinear(nn.Module):
         if activation is not None:
             self.__sequential.append(activation)
         self.__sequential = nn.Sequential(*self.__sequential)
-    
+
     def forward(self, X):
         h = self.__sequential(X)
-        
+
         return h

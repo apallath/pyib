@@ -1,0 +1,2 @@
+traj_catch_bond_f_0.dat filter=lfs diff=lfs merge=lfs -text
+traj_slip_bond_f_0.dat filter=lfs diff=lfs merge=lfs -text

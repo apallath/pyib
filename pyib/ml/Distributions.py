@@ -1,12 +1,11 @@
-import torch 
-import numpy as np
-import torch.nn as nn
+import torch
 
-def log_Normal_diag(x, mean, log_var, dim=None, keepdims=False):
+
+def log_normal_diag(x, mean, log_var, dim=None, keepdims=False):
     """
-    Function that calculates the log-likelihood for a diagonal multivariate gaussian distribution
+    Calculates the log-likelihood for a diagonal multivariate Gaussian distribution.
     """
-    log_normal = -0.5 * (log_var + torch.pow(x - mean, 2)/ torch.exp(log_var))
+    log_normal = -0.5 * (log_var + torch.pow(x - mean, 2) / torch.exp(log_var))
 
     if dim is not None:
         sum_ = torch.sum(log_normal, dim=dim, keepdims=keepdims)
