@@ -67,11 +67,14 @@ class SPIB(nn.Module):
         # Initialize encoder and decoder
         self.encoder, self.encoderMean, self.encoderLogVar = self._encoder_init()
         self.decoder = self._decoder_init()
+
+        # Initialize representative inputs
+        # TODO: refactor
         self._representativeInputs_init()
 
     def _encoder_init(self):
         """
-        Initializes encoder
+        Initializes encoder.
         """
         encoder = []
         mean_layer = []
@@ -93,18 +96,121 @@ class SPIB(nn.Module):
 
     def _decoder_init(self):
         """
-        Initializes decoder
+        Initializes decoder.
         """
         tempDim = [self.hidden_dim] + list(self.decoder_dim)
         # We know N>=2
         N = len(tempDim)
 
         layers = []
-        for i in range(N-2):
-            layers.append(NonLinear(tempDim[i], tempDim[i+1], bias=True, activation=self.activation))
+        for i in range(N - 2):
+            layers.append(NonLinear(tempDim[i], tempDim[i + 1], bias=True, activation=self.activation))
         layers.append(NonLinear(tempDim[-2], tempDim[-1], bias=True, activation=None))
 
         return nn.Sequential(*layers)
+
+    def reparameterize(self, mean, logVar):
+        r"""
+        Performs the reparameterization trick:
+
+        $z^{n} = \mu(X^{n}) + \sigma(X^{n})  * \epsilon , where \epsilon ~ N(0,I)$
+        """
+        # Var^{1/2}
+        std = torch.exp(0.5 * logVar)
+        eps = torch.rand_like(std, device=self.device)
+
+        return mean + std * eps
+
+    def encode(self, X):
+        """
+        Encodes X --> distribution in z.
+
+        Returns:
+            mean (torch.Tensor)
+            logVar (torch.Tensor)
+        """
+        X = self.encoder(X)
+
+        mean = self.encoderMean(X)
+        if self.restrictLogVar:
+            logVar = self.logVar_min * self.encoderLogVar(X)
+        else:
+            logVar = self.encoderLogVar(X)
+
+        return mean, logVar
+
+    def decode(self, z):
+        """
+        Decodes z --> output s.
+
+        Returns:
+            s (torch.Tensor)
+        """
+        return self.decoder(z)
+
+    def forward(self, X):
+        r"""
+        Args:
+            X (torch.tensor): Tensor with dimension (N, input_dim)
+
+        Returns:
+            s: SPIB output.
+            mean: Encoder mean.
+            logvar: Encoder logVar.
+            z_sample: Randomly sampled $z$ from $N(0,I)$.
+        """
+        mean, logVar = self.encode(X)
+        z_sample = self.reparameterize(mean, logVar)
+        s = self.decode(z_sample)
+
+        return s, mean, logVar, z_sample
+
+    def evaluate(self, X, to_numpy=True):
+        """
+        Predicts state and RC mean, logvar for data X.
+
+        Args:
+            X (torch.Tensor): Input data with shape (N, input_dim)
+
+        Returns:
+            index:
+        """
+        assert X.shape[1] == self.input_dim, "X must have same dimension as encoder input_dim ({}).".format(self.input_dim)
+
+        with torch.no_grad():
+            decoder_output, mean, logVar, _ = self.forward(X)
+
+            index = torch.argmax(decoder_output, axis=1, keepdim=True)
+
+            index_one_hot = torch.nn.functional.one_hot(index.flatten(), num_classes=self.output_dim)
+
+        if to_numpy:
+            index, mean, logVar, decoder_output, index_one_hot = index.detach().numpy(), \
+                                                                  mean.detach().numpy(), \
+                                                                  logVar.detach().numpy(), \
+                                                                  decoder_output.detach().numpy(), \
+                                                                  index_one_hot.detach().numpy
+
+        return index, mean, logVar, decoder_output
+
+    def log_pz(self,z, mean, logvar):
+        """
+        Function that calculates the log of the encoder output p(z|X) ~ N(mu(X), std(X))
+        where mu(X) and std(X) are the encoder NN
+
+        Args:
+            z(torch.tensor)     : Sampled z from distribution N(z;mean,var), shape (N,d)
+            mean(torch.tensor)  : Mean is torch tensor of shape (d)
+            logvar(torch.tensor): Log var is torch tensor of shape (d)
+
+        Return :
+            log_p(z)    : The log likelihood of the data points
+        """
+        # input z (N, hidden_dim)
+        # output log_p (N,1)
+        log_p = log_normal_diag(z,mean, logvar,dim=1, keepdims=True)
+
+        return log_p
 
     def _representativeInputs_init(self):
         """
@@ -140,98 +246,6 @@ class SPIB(nn.Module):
         for i in range(self.representative_dim):
             index = (labels==i)
             self.__pseudo_input[i] = X[index,:].mean(axis=0)
-
-    def reparametrize(self, mean, logvar):
-        """
-        Performs the reparameterization trick where
-            z^{n} = \mu(X^{n}) + \sigma(X^{n})  * \epsilon , where \epsilon ~ N(0,I)
-        """
-        # Var^{1/2}
-        std = torch.exp(0.5 * logvar)
-        eps = torch.rand_like(std, device=self.device)
-
-        return mean + std * eps
-
-    def _encode(self, X):
-        """
-        Function for encoder
-
-        Return:
-            mean(torch.tensor)
-            logVar(torch.tensor)
-        """
-        X = self.encoder(X)
-
-        mean = self.encoderMean(X)
-        if self.restrictLogVar:
-            logvar = -10*self.encoderLogVar(X)
-        else:
-            logvar = self.encoderLogVar(X)
-
-        return mean, logvar
-
-    def forward(self,X):
-        """
-        Args:
-            X (torch.tensor)    : Tensor with dimension (N, input_dim)
-
-        Returns:
-            decoder_output      : The output of the VAE
-            mean                : The mean output from the encoder
-            logvar              : The logvar output from the encoder
-            z_sample            : The randomly sampled Z from N(0,I)
-        """
-        mean, logvar = self._encode(X)
-
-        z_sampled = self.reparametrize(mean, logvar)
-        decoder_output = self.decoder(z_sampled)
-
-        return decoder_output, mean, logvar, z_sampled
-
-    def evaluate(self, X, to_numpy=True):
-        """
-        Function that evaluates the output for any data point
-
-        Args:
-            X(torch.tensor) : Input data with shape (N,input_dim)
-        """
-        assert len(X.shape) == 2 , "Input must be 2-dimensional torch.tensor but the user input is dim = {}".format(len(X.shape))
-        assert X.shape[1] == self.input_dim , "Input data must have the same dimension as the required input dimension = {}".format(self.input_dim)
-
-        with torch.no_grad():
-            decoder_output, mean, logVar, _ = self.forward(X)
-
-            index = torch.argmax(decoder_output, axis=1, keepdim=True)
-
-            index_one_hot = torch.nn.functional.one_hot(index.flatten(), num_classes=self.output_dim)
-
-        if to_numpy:
-            index , mean, logVar, decoder_output, index_one_hot = index.detach().numpy(), \
-                                                    mean.detach().numpy(), \
-                                                    logVar.detach().numpy(), \
-                                                    decoder_output.detach().numpy(), \
-                                                    index_one_hot.detach().numpy
-
-        return index, mean, logVar, decoder_output
-
-    def log_pz(self,z, mean, logvar):
-        """
-        Function that calculates the log of the encoder output p(z|X) ~ N(mu(X), std(X))
-        where mu(X) and std(X) are the encoder NN
-
-        Args:
-            z(torch.tensor)     : Sampled z from distribution N(z;mean,var), shape (N,d)
-            mean(torch.tensor)  : Mean is torch tensor of shape (d)
-            logvar(torch.tensor): Log var is torch tensor of shape (d)
-
-        Return :
-            log_p(z)    : The log likelihood of the data points
-        """
-        # input z (N, hidden_dim)
-        # output log_p (N,1)
-        log_p = log_normal_diag(z,mean, logvar,dim=1, keepdims=True)
-
-        return log_p
 
     def log_rz(self,z):
         """
