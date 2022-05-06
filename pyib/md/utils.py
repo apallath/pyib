@@ -69,25 +69,13 @@ class TrajectoryReader:
 
         return np.array(traj)
 
-################################################################################
-# Timeseries plotting functions
-################################################################################
-
-
-def plot_timeseries(t, traj, dpi=150):
-    """
-    Plots timeseries data for x, y, and z components of traj.
-    """
-    fig, ax = plt.subplots(4, 1, figsize=(10, 4), dpi=dpi)
-    return fig, ax
-
 
 ################################################################################
 # Legendre polynomial utility functions
 ################################################################################
 
 
-def legendreFit(x, y, deg=5):
+def legendreFit(x, y, min, max, deg=5):
     """Fit legendre polynomial to x, y.
 
     Args:
@@ -97,11 +85,12 @@ def legendreFit(x, y, deg=5):
 
     Returns:
         c (array): Legendre coefficients"""
-    c = np.polynomial.legendre.Legendre.fit(x, y, deg=deg).convert().coef
+    x_scale = (x - (min + max) / 2.0) / ((max - min) / 2.0)
+    c = np.polynomial.legendre.Legendre.fit(x_scale, y, deg=deg).convert().coef
     return c
 
 
-def getLegendreValues(x, c):
+def getLegendreValues(x, min, max, c):
     r"""
     Perform legendre polynomial expansion
         y = \sum_i c_i P_i(x)
@@ -116,8 +105,11 @@ def getLegendreValues(x, c):
     N = len(c)
 
     y = np.zeros_like(x)
+
+    x_scale = (x - (min + max) / 2.0) / ((max - min) / 2.0)
+
     for i in range(N):
         Pi = legendre(i)
-        y += c[i] * Pi(x)
+        y += c[i] * Pi(x_scale)
 
     return y
