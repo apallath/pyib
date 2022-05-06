@@ -1,12 +1,14 @@
 """
 Miscellanious utility functions for MD.
 """
+import matplotlib.pyplot as plt
 import numpy as np
 from scipy.special import legendre
 
 ################################################################################
 # Trajectory reader
 ################################################################################
+
 
 class TrajectoryReader:
     """Utility class for reading large trajectories.
@@ -68,8 +70,22 @@ class TrajectoryReader:
         return np.array(traj)
 
 ################################################################################
+# Timeseries plotting functions
+################################################################################
+
+
+def plot_timeseries(t, traj, dpi=150):
+    """
+    Plots timeseries data for x, y, and z components of traj.
+    """
+    fig, ax = plt.subplots(4, 1, figsize=(10, 4), dpi=dpi)
+    return fig, ax
+
+
+################################################################################
 # Legendre polynomial utility functions
 ################################################################################
+
 
 def LegendreFit(x, y, deg=5):
     """Fit legendre polynomial to x, y.
