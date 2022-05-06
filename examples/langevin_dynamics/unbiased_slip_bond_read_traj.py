@@ -8,13 +8,16 @@ from pyib.md.simulation import SingleParticleSimulation
 from pyib.md.visualization import VisualizePotential2D
 from pyib.md.utils import TrajectoryReader
 
+
+##########################################################
+# Experiment with these parameters:
+
 # Constants
 temp = 300
 force = 0
-init_coord = np.array([[-5, -4, 0]])
 
-temp = 1500
 init_coord = np.array([[-5, -4, 0]])
+##########################################################
 
 # Initialize potential
 pot = SlipBondPotential2D(force_x=force)

@@ -49,13 +49,16 @@ class LegendreBias1D(torch.nn.Module):
         degree (int)
         axis (str): 'x' or 'y' (default='x')
     """
-    def __init__(self, degree, axis='x'):
+    def __init__(self, degree, weights, min, max, axis='x'):
         self.degree = degree
-        self.weights = nn.parameter.Parameter(torch.randn(degree + 1))
+        self.weights = torch.from_numpy(weights).type(torch.DoubleTensor)
+        self.min = min
+        self.max = max
         self.axis = axis
+        super().__init__()
 
     @classmethod
-    def legendre_polynomial(cls, x, degree):
+    def legendre_polynomial(cls, x, degree: int) -> torch.Tensor:
         r"""
         Computes a legendre polynomial of degree $n$ using dynamic programming
         and the Bonnet's recursion formula:
@@ -63,13 +66,15 @@ class LegendreBias1D(torch.nn.Module):
         $$(n + 1) P_{n+1}(x) = (2n + 1) x P_n(x) - nP_{n-1}(x)$$
         """
         if degree == 0:
-            return torch.ones(x.size(0), requires_grad=True).type(x.type())
+            ones_list = x.size(0) * [1.0]
+            return torch.tensor(ones_list, requires_grad=True).type(x.type())
 
         elif degree == 1:
             return x
 
-        elif degree > 1:
-            P_n_minus = torch.ones(x.size(0), requires_grad=True).type(x.type())
+        else:
+            ones_list = x.size(0) * [1.0]
+            P_n_minus = torch.tensor(ones_list, requires_grad=True).type(x.type())
             P_n = x
 
             for n in range(1, degree):
@@ -78,8 +83,7 @@ class LegendreBias1D(torch.nn.Module):
                 # Replace
                 P_n_minus = P_n
                 P_n = P_n_plus
-
-        return P_n
+            return P_n
 
     def forward(self, positions):
         """The forward method returns the energy computed from positions.
@@ -100,9 +104,11 @@ class LegendreBias1D(torch.nn.Module):
         else:
             raise ValueError("Invalid axis")
 
+        # Scale
+        x = (x - (self.min + self.max) / 2) / ((self.max - self.min) / 2)
+
         # Apply legendre expansion bias
         bias = torch.zeros_like(x)
         for i in range(self.degree):
             bias += self.weights[i] * self.legendre_polynomial(x, i)
-
         return bias

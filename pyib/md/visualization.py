@@ -101,6 +101,31 @@ class VisualizePotential2D:
         ax.set_ylim([0, None])
         return (fig, ax, x, Fx)
 
+    def plot_projection_y(self):
+        """
+        Plots the y-projection of potential within (xrange[0], xrange[1])
+        and (yrange[0], yrange[1]).
+        """
+        # Compute 2D free energy profile
+        xx, yy = np.meshgrid(np.linspace(self.xrange[0], self.xrange[1], self.mesh), np.linspace(self.yrange[0], self.yrange[1], self.mesh))
+        x = xx.ravel()
+        y = yy.ravel()
+        v = self.potential2D.potential(x, y)
+        V = v.reshape(self.mesh, self.mesh) / self.kT
+
+        # Integrate over y-coordinate to get free-energy along y-coordinate
+        Fy = -logsumexp(-V, axis=1)
+        Fy = Fy - np.min(Fy)
+        y = np.linspace(self.yrange[0], self.yrange[1], self.mesh)
+
+        # Plot
+        fig, ax = plt.subplots(dpi=150)
+        ax.plot(y, Fy)
+        ax.set_ylabel(r"Free energy ($k_B T$)")
+        ax.set_xlabel("$y$")
+        ax.set_ylim([0, None])
+        return (fig, ax, y, Fy)
+
     def scatter_traj(self, traj, outimg, every=1, s=1, c='black'):
         """
         Scatters entire trajectory onto potential energy surface.
