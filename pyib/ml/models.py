@@ -259,7 +259,7 @@ class SPIB(nn.Module):
         uk = self.__pseudo_input
 
         # shape (Representative_D, hidden_dim)
-        representative_Z_mean, representative_Z_logvar = self._encode(uk)
+        representative_Z_mean, representative_Z_logvar = self.encode(uk)
 
         # Shape (1, Representative_D, hidden_dim)
         representative_mean = representative_Z_mean.unsqueeze(0)
