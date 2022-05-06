@@ -42,8 +42,3 @@ jobs:
         cd tests/tests_md
         pytest
         cd ../..
-    - name: ML tests
-      run: |
-        cd tests/tests_ml
-        pytest
-        cd ../..
