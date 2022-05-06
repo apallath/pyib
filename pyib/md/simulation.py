@@ -7,12 +7,16 @@ import pickle
 import numpy as np
 from openmm import unit
 from openmm import openmm
+from openmmtorch import TorchForce
 from tqdm import tqdm
 
 
 class SingleParticleSimulation:
     """
-    Performs langevin dynamics simulation of a particle on a potential energy surface.
+    Performs (biased) langevin dynamics simulation of a particle on a potential energy surface.
+
+    Important:
+        The `bias` module must be an OpenMM-torch force module.
 
     Attributes:
         potential (openmm.CustomExternalForce): Underlying potential energy surface.
@@ -26,6 +30,7 @@ class SingleParticleSimulation:
         cpu_threads (int): If gpu is False, number of CPU threads to use for simulation. If None, the max cpu count is used. (default = None).
         seed (int): Seed for reproducibility (default = None).
         traj_in_mem (bool): If True, stores trajectory in memory. The trajectory can be accessed by the object's `traj` attribute (default=False).
+        bias (openmmtorch.TorchForce): Bias force to add to the system (default = None).
 
     Arguments:
         nsteps (int): Number of steps to run simulation for (default = 1000)
@@ -35,6 +40,8 @@ class SingleParticleSimulation:
         chkfile (str): File to write checkpoints to (default = "./chk_state.pkl"). If this file already exists, it will be overwritten.
         trajfile (str): File to write trajectory data to (default = "./traj.dat"). If this file already exists, it will be overwritten.
         energyfile (str): File to write energies to (default = "./energies.dat"). If this file already exists, it will be overwritten.
+        biasenergyevery (int): If bias is not None, bias force output interval (default = 1).
+        biasenergyfile (str): If bias is not None, file to write bias energies to (default="./bias_energies.dat"). If this file already exists, it will be overwritten.
     """
     def __init__(self,
                  potential: openmm.CustomExternalForce,
@@ -47,7 +54,8 @@ class SingleParticleSimulation:
                  gpu: bool = False,
                  cpu_threads: int = None,
                  seed: int = None,
-                 traj_in_mem: bool = False):
+                 traj_in_mem: bool = False,
+                 bias: TorchForce = None):
         # Properties
         self.mass = mass * unit.dalton  # mass of particles
         self.temp = temp * unit.kelvin  # temperature
@@ -58,12 +66,20 @@ class SingleParticleSimulation:
         self.gpu = gpu
         self.traj_in_mem = traj_in_mem
 
+        # Biasing
+        self.bias = bias
+
         # Init simulation objects
         self.system = openmm.System()
         self.potential = potential
         self.system.addParticle(self.mass)
         self.potential.addParticle(0, [])  # no parameters associated with each particle
         self.system.addForce(potential)
+
+        # Init bias
+        if self.bias is not None:
+            self.bias.addParticle(0, [])  # no parameters associated with each particle
+            self.system.addForce(bias)
 
         self.integrator = openmm.LangevinIntegrator(self.temp,
                                                     self.friction,
@@ -95,6 +111,9 @@ class SingleParticleSimulation:
         else:
             self.context.setState(init_state)
 
+    def add_bias(self,):
+        pass
+
     def __call__(self,
                  nsteps: int = 1000,
                  chkevery: int = 500,
@@ -102,7 +121,9 @@ class SingleParticleSimulation:
                  energyevery: int = 1,
                  chkfile="./chk_state.pkl",
                  trajfile="./traj.dat",
-                 energyfile="./energies.dat"):
+                 energyfile="./energies.dat",
+                 biasenergyevery: int = 1,
+                 biasenergyfile="./bias_energies.dat"):
 
         if self.traj_in_mem:
             self.traj = None
@@ -119,6 +140,11 @@ class SingleParticleSimulation:
             # Store energy
             if i % energyevery == 0:
                 self._write_energies(energyfile, i)
+
+            # Store bias energy
+            if self.bias is not None:
+                if i % biasenergyevery == 0:
+                    self._write_bias_energies(biasenergyfile, i)
 
             # Integrator step
             self.integrator.step(1)
@@ -165,3 +191,15 @@ class SingleParticleSimulation:
 
         with open(ofilename, "a") as of:
             of.write("{:10.5f}\t{:10.7f}\t{:10.7f}\n".format(t, PE, KE))
+
+    def _write_bias_energies(self, ofilename, i):
+        t = i * self.timestep / unit.picosecond
+        pos = self.context.getState(getPositions=True).getPositions(asNumpy=True).value_in_unit(unit.nanometer)
+        BE = float(self.bias(pos))
+
+        if i == 0:
+            with open(ofilename, "w") as of:
+                of.write("# t[ps]    Bias [kJ/mol]\n")
+
+        with open(ofilename, "a") as of:
+            of.write("{:10.5f}\t{:10.7f}\n".format(t, BE))
