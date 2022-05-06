@@ -87,7 +87,7 @@ def plot_timeseries(t, traj, dpi=150):
 ################################################################################
 
 
-def LegendreFit(x, y, deg=5):
+def legendreFit(x, y, deg=5):
     """Fit legendre polynomial to x, y.
 
     Args:

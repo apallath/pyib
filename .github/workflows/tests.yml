@@ -27,9 +27,9 @@ jobs:
           update-conda: true
           python-version: ${{ matrix.python-version }}
           conda-channels: anaconda, conda-forge
-    - name: Install OpenMM
+    - name: Install OpenMM and OpenMM-torch
       run: |
-        conda install -c conda-forge openmm
+        conda install -c conda-forge openmm openmm-torch
         python -c "import openmm"
     - name: Install pytest
       run: |
